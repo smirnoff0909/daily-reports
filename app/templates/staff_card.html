@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{% if subject %}{{ subject.full_name }}{% else %}Новый сотрудник{% endif %} — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>{% if subject %}Карточка сотрудника{% else %}Новый сотрудник{% endif %}</h1>
+
+  {% if saved == 'card' %}<p class="notice">Карточка сохранена.</p>{% endif %}
+  {% if saved == 'password' %}<p class="notice">Пароль изменён.</p>{% endif %}
+  {% if saved == 'create' %}<p class="notice">Сотрудник заведён.</p>{% endif %}
+  {% if saved == 'active' %}<p class="notice">Доступ изменён.</p>{% endif %}
+  {% if errors %}
+  <div class="alert">
+    <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{% if subject %}/staff/{{ subject.id }}{% else %}/staff/new{% endif %}" class="stack">
+    <label>ФИО
+      <input name="full_name" value="{{ values.full_name or '' }}" maxlength="200" required autofocus>
+    </label>
+    {% if subject %}
+    <label>Логин
+      <input value="{{ subject.login }}" disabled>
+    </label>
+    {% else %}
+    <label>Логин
+      <input name="login" value="{{ values.login or '' }}" maxlength="100"
+             placeholder="ivanov" autocomplete="off" required>
+    </label>
+    {% endif %}
+    <label>Должность
+      <input name="position" value="{{ values.position or '' }}" maxlength="120" placeholder="инженер-механик">
+    </label>
+    <label>Подотдел
+      <input name="subdepartment" value="{{ values.subdepartment or '' }}" maxlength="120" placeholder="котельный участок">
+    </label>
+    <label>Роль
+      <select name="role">
+        {% for value, title in role_names.items() %}
+        <option value="{{ value }}" {% if values.role == value %}selected{% endif %}>{{ title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    {% if not subject %}
+    <label>Пароль
+      <input name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+    </label>
+    <label>Повторите пароль
+      <input name="repeat" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+    </label>
+    {% endif %}
+
+    <div class="actions">
+      <button class="primary" type="submit">{% if subject %}Сохранить карточку{% else %}Завести сотрудника{% endif %}</button>
+      <a href="/staff">К списку</a>
+    </div>
+  </form>
+
+  {% if subject %}
+  <h2>Пароль доступа</h2>
+  <form method="post" action="/staff/{{ subject.id }}/password" class="stack">
+    <label>Новый пароль
+      <input name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+    </label>
+    <label>Повторите пароль
+      <input name="repeat" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+    </label>
+    <div class="actions">
+      <button type="submit">Задать пароль</button>
+      <span class="hint">Не короче {{ min_password }} символов. Старый пароль не потребуется.</span>
+    </div>
+  </form>
+
+  {% if subject.id != user.id %}
+  <h2>Доступ</h2>
+  <form method="post" action="/staff/{{ subject.id }}/active">
+    <div class="actions">
+      <button type="submit">{{ 'Отключить доступ' if subject.is_active else 'Вернуть доступ' }}</button>
+      <span class="hint">Сотрудник не удаляется — иначе разъедутся прошлые отчёты.</span>
+    </div>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

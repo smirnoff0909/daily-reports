@@ -7,26 +7,40 @@
       <h1>{{ report.report_date|date_ru }}</h1>
       <p class="lead">{{ report.user.full_name }}</p>
     </div>
-    <div class="total">
-      <span class="total-value">{{ report.total_hours|hours }}</span>
-      <span class="total-label">часов за день</span>
+    <div class="total-pair">
+      <div class="total">
+        <span class="total-value">{{ report.total_hours|hours }}</span>
+        <span class="total-label">часов за день</span>
+      </div>
+      <div class="total">
+        <span class="total-value">{{ report.total_ue|amount }}</span>
+        <span class="total-label">УЕ за день</span>
+      </div>
     </div>
   </div>
 
+  <div class="table-scroll">
   <table class="items">
-    <thead><tr><th>Задача</th><th class="num">Часы</th></tr></thead>
+    <thead><tr><th>Задача</th><th class="num">Часы</th><th class="num">УЕ</th></tr></thead>
     <tbody>
       {% for item in report.items %}
       <tr>
         <td>
+          {% if item.task_url %}
+          <a class="link" href="{{ item.task_url }}" target="_blank" rel="noopener noreferrer"
+             title="{{ item.task_url }}">{{ item.task_title }}</a>
+          {% else %}
           {{ item.task_title }}
+          {% endif %}
           {% if item.comment %}<span class="comment">{{ item.comment }}</span>{% endif %}
         </td>
         <td class="num">{{ item.hours|hours }}</td>
+        <td class="num">{{ item.ue|amount }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   <p class="actions">
     {% if editable %}<a class="primary-link" href="/reports/new?date={{ report.report_date }}">Изменить отчёт</a>{% endif %}
@@ -39,9 +53,17 @@
     {% for entry in history %}
     <li>
       <span class="when">{{ entry.created_at|datetime_ru }}</span>
-      <span class="what">{{ 'создан' if entry.action == 'create' else 'изменён' }}</span>
+      <span class="what">
+        {%- if entry.action == 'create' %}создан
+        {%- elif entry.action == 'ue' %}правка УЕ
+        {%- else %}изменён{% endif -%}
+      </span>
       <span class="who-name">{{ entry.actor.short_name }}</span>
-      {% if entry.payload %}<span class="num">{{ entry.payload.total_hours }} ч</span>{% endif %}
+      {% if entry.action == 'ue' %}
+      <span class="num">{{ entry.payload.total_ue }} УЕ</span>
+      {% elif entry.payload %}
+      <span class="num">{{ entry.payload.total_hours }} ч</span>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>

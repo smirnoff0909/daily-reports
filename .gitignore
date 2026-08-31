@@ -1,6 +1,7 @@
 .env
 *.db
 *.sqlite3
+*.db.bak
 __pycache__/
 *.py[cod]
 .venv/
@@ -9,6 +10,7 @@ venv/
 .ruff_cache/
 .mypy_cache/
 .idea/
+.vs/
 .vscode/
 *.xlsx
 backups/

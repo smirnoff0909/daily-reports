@@ -3,7 +3,6 @@
 {% block content %}
 <div class="signin">
   <h1>{{ app_name }}</h1>
-  <p class="lead">Ежедневные отчёты о работе. Войдите под своей учётной записью.</p>
   {% if error %}<p class="alert">{{ error }}</p>{% endif %}
   <form method="post" action="/login" class="stack">
     <label>Логин
@@ -14,6 +13,6 @@
     </label>
     <button class="primary" type="submit">Войти</button>
   </form>
-  <p class="hint">Учётные записи заводит администратор. Забыли пароль — напишите ему.</p>
+  <p class="hint">Учётные записи заводит руководитель. Забыли пароль — напишите ему.</p>
 </div>
 {% endblock %}

@@ -16,22 +16,27 @@ def build_workbook(first: date, reports: list[Report]) -> bytes:
     sheet = workbook.active
     sheet.title = "Отчёты"
 
-    headers = ["Дата", "Сотрудник", "Задача", "Часы", "Комментарий"]
+    headers = ["Дата", "Сотрудник", "Задача", "Часы", "УЕ", "Ссылка", "Комментарий"]
     sheet.append(headers)
     for column in range(1, len(headers) + 1):
         sheet.cell(row=1, column=column).font = Font(bold=True)
 
     total = 0.0
+    total_ue = 0.0
     for report in sorted(reports, key=lambda r: (r.report_date, r.user.full_name)):
         for item in report.items:
             hours = float(item.hours)
             total += hours
+            ue = float(item.ue) if item.ue is not None else None
+            total_ue += ue or 0.0
             sheet.append(
                 [
                     report.report_date,
                     report.user.full_name,
                     item.task_title,
                     hours,
+                    ue,
+                    item.task_url or "",
                     item.comment or "",
                 ]
             )
@@ -39,8 +44,9 @@ def build_workbook(first: date, reports: list[Report]) -> bytes:
     last_row = sheet.max_row + 1
     sheet.cell(row=last_row, column=3, value="Итого").font = Font(bold=True)
     sheet.cell(row=last_row, column=4, value=round(total, 2)).font = Font(bold=True)
+    sheet.cell(row=last_row, column=5, value=round(total_ue, 2)).font = Font(bold=True)
 
-    widths = [12, 28, 60, 8, 40]
+    widths = [12, 28, 60, 8, 8, 44, 40]
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
     for row in sheet.iter_rows(min_row=2, min_col=1, max_col=1):

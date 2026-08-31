@@ -33,6 +33,8 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     login: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[str | None] = mapped_column(String(120))
+    subdepartment: Mapped[str | None] = mapped_column(String(120))
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="engineer")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -85,11 +87,17 @@ class Report(Base):
     def total_hours(self) -> Decimal:
         return sum((item.hours for item in self.items), Decimal("0"))
 
+    @property
+    def total_ue(self) -> Decimal:
+        """УЕ проставлены не везде — незаполненные считаем нулём."""
+        return sum((item.ue or Decimal("0") for item in self.items), Decimal("0"))
+
 
 class ReportItem(Base):
     __tablename__ = "report_items"
     __table_args__ = (
         CheckConstraint("hours > 0 and hours <= 24", name="ck_items_hours"),
+        CheckConstraint("ue >= 0 and ue <= 9999.99", name="ck_items_ue"),
     )
 
     id: Mapped[int] = mapped_column(PK, primary_key=True)
@@ -99,6 +107,8 @@ class ReportItem(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     task_title: Mapped[str] = mapped_column(String(200), nullable=False)
     hours: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    ue: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    task_url: Mapped[str | None] = mapped_column(String(500))
     comment: Mapped[str | None] = mapped_column(Text)
 
     report: Mapped[Report] = relationship(back_populates="items")

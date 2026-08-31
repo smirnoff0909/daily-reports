@@ -4,15 +4,32 @@
 <section class="card">
   <div class="dayhead">
     <div>
-      <h1>{{ report_date|date_ru }}</h1>
+      <div class="daynav">
+        <a class="daynav-step" href="/reports/new?date={{ prev_date }}" title="День назад">←</a>
+        <h1 class="daynav-date">
+          <input type="date" id="jump" value="{{ report_date }}" max="{{ today }}"
+                 aria-label="Дата отчёта, нажмите чтобы выбрать день">
+        </h1>
+        {% if next_date %}
+        <a class="daynav-step" href="/reports/new?date={{ next_date }}" title="День вперёд">→</a>
+        {% else %}
+        <span class="daynav-step off" title="Будущие дни закрыты">→</span>
+        {% endif %}
+      </div>
       <p class="lead">
         {% if existing %}Отчёт уже сохранён — можно поправить и сохранить заново.
         {% else %}Что сделано за день и сколько времени заняло.{% endif %}
       </p>
     </div>
-    <div class="total" id="total-box">
-      <span class="total-value" id="total-value">0</span>
-      <span class="total-label">часов за день</span>
+    <div class="total-pair">
+      <div class="total" id="total-box">
+        <span class="total-value" id="total-value">0</span>
+        <span class="total-label">часов за день</span>
+      </div>
+      <div class="total">
+        <span class="total-value" id="ue-value">0</span>
+        <span class="total-label">УЕ за день</span>
+      </div>
     </div>
   </div>
 
@@ -39,26 +56,28 @@
                  value="{{ row.task_title }}" {% if not editable %}disabled{% endif %} required>
           <input class="hours" name="hours" inputmode="decimal" placeholder="ч"
                  value="{{ row.hours }}" {% if not editable %}disabled{% endif %} required>
+          <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ"
+                 title="Условные единицы: по умолчанию часы ÷ 8"
+                 value="{{ row.ue if row.ue is not none else '' }}" {% if not editable %}disabled{% endif %}>
           <button type="button" class="drop" title="Убрать строку" {% if not editable %}disabled{% endif %}>×</button>
         </div>
-        <input class="comment" name="comment" placeholder="Комментарий, если нужен"
-               value="{{ row.comment or '' }}" {% if not editable %}disabled{% endif %}>
+        <div class="row-extra">
+          <input class="comment" name="comment" placeholder="Комментарий, если нужен"
+                 value="{{ row.comment or '' }}" {% if not editable %}disabled{% endif %}>
+          <input class="link" name="task_url" placeholder="Ссылка на задачу"
+                 value="{{ row.task_url or '' }}" {% if not editable %}disabled{% endif %}>
+        </div>
       </div>
       {% endfor %}
     </div>
 
     {% if editable %}
-    <div class="actions">
-      <button type="button" id="add-row">Добавить задачу</button>
+    <div class="actions actions-stack">
+      <button type="button" id="add-row" class="add">Добавить задачу</button>
       <button type="submit" class="primary">Сохранить отчёт</button>
     </div>
     {% endif %}
   </form>
-
-  <p class="hint">
-    Другой день:
-    <input type="date" id="jump" value="{{ report_date }}" max="{{ today }}">
-  </p>
 </section>
 
 <template id="row-template">
@@ -66,9 +85,14 @@
     <div class="row-main">
       <input class="task" name="task_title" maxlength="200" placeholder="Название задачи" required>
       <input class="hours" name="hours" inputmode="decimal" placeholder="ч" required>
+      <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ"
+             title="Условные единицы: по умолчанию часы ÷ 8">
       <button type="button" class="drop" title="Убрать строку">×</button>
     </div>
-    <input class="comment" name="comment" placeholder="Комментарий, если нужен">
+    <div class="row-extra">
+      <input class="comment" name="comment" placeholder="Комментарий, если нужен">
+      <input class="link" name="task_url" placeholder="Ссылка на задачу">
+    </div>
   </div>
 </template>
 
@@ -78,15 +102,22 @@
   var template = document.getElementById('row-template');
   var addButton = document.getElementById('add-row');
   var totalValue = document.getElementById('total-value');
+  var ueValue = document.getElementById('ue-value');
   var jump = document.getElementById('jump');
 
-  function recalc() {
+  function sumOf(selector) {
     var sum = 0;
-    rows.querySelectorAll('input.hours').forEach(function (input) {
+    rows.querySelectorAll(selector).forEach(function (input) {
       var value = parseFloat(input.value.replace(',', '.'));
       if (!isNaN(value)) { sum += value; }
     });
-    totalValue.textContent = String(Math.round(sum * 100) / 100).replace('.', ',');
+    return Math.round(sum * 100) / 100;
+  }
+
+  function recalc() {
+    var sum = sumOf('input.hours');
+    totalValue.textContent = String(sum).replace('.', ',');
+    ueValue.textContent = String(sumOf('input.ue')).replace('.', ',');
     document.getElementById('total-box').classList.toggle('over', sum > 12);
   }
 
@@ -107,10 +138,36 @@
     }
     recalc();
   });
-  rows.addEventListener('input', recalc);
+  function fillUe(row) {
+    var hoursField = row.querySelector('input.hours');
+    var ueField = row.querySelector('input.ue');
+    if (!hoursField || !ueField || ueField.dataset.touched) { return; }
+    var hours = parseFloat(hoursField.value.replace(',', '.'));
+    ueField.value = isNaN(hours)
+      ? ''
+      : String(Math.round(hours / 8 * 100) / 100).replace('.', ',');
+  }
+
+  rows.addEventListener('input', function (event) {
+    var field = event.target;
+    if (field.classList.contains('ue')) { field.dataset.touched = '1'; }
+    if (field.classList.contains('hours')) { fillUe(field.closest('.row')); }
+    recalc();
+  });
+
+  // уже сохранённые УЕ считаем ручными: правка часов их не затрёт
+  rows.querySelectorAll('input.ue').forEach(function (field) {
+    if (field.value) { field.dataset.touched = '1'; }
+  });
   if (jump) {
+    // на десктопе календарь открывается по клику в любое место поля, не только по значку
+    jump.addEventListener('click', function () {
+      if (typeof jump.showPicker === 'function') {
+        try { jump.showPicker(); } catch (error) { /* браузер откроет сам */ }
+      }
+    });
     jump.addEventListener('change', function () {
-      window.location.href = '/reports/new?date=' + jump.value;
+      if (jump.value) { window.location.href = '/reports/new?date=' + jump.value; }
     });
   }
   if (!rows.children.length && addButton) { addRow(false); }

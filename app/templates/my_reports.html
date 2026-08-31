@@ -2,47 +2,109 @@
 {% block title %}Мой месяц — {{ app_name }}{% endblock %}
 {% block content %}
 <section class="card">
-  <div class="monthhead">
-    <h1>{{ month_label }}</h1>
-    <div class="monthnav">
-      <a href="/reports/my?month={{ prev_month }}">←</a>
-      <a href="/reports/my?month={{ next_month }}">→</a>
+  <div class="monthpick">
+    <a class="daynav-step" href="/reports/my?month={{ prev_month }}" title="Месяц назад">←</a>
+    <h1 class="daynav-date">
+      <button type="button" class="monthbtn" id="month-open"
+              title="Выбрать месяц">{{ month_label|capitalize }}</button>
+      <input type="month" id="month-pick" value="{{ month }}" class="picker-hidden"
+             tabindex="-1" aria-label="Месяц">
+    </h1>
+    <a class="daynav-step" href="/reports/my?month={{ next_month }}" title="Месяц вперёд">→</a>
+  </div>
+
+  <div class="total-pair total-pair-center">
+    <div class="total">
+      <span class="total-value">{{ total_hours|hours }}</span>
+      <span class="total-label">часов за месяц</span>
+    </div>
+    <div class="total">
+      <span class="total-value">{{ total_ue|amount }}</span>
+      <span class="total-label">УЕ за месяц</span>
     </div>
   </div>
 
   {% if saved %}<p class="notice">Отчёт за {{ saved }} сохранён.</p>{% endif %}
-
-  <div class="stats">
-    <div><span class="stat-value">{{ total_hours|hours }}</span><span class="stat-label">часов за месяц</span></div>
-    <div><span class="stat-value">{{ filled_days }}</span><span class="stat-label">дней заполнено</span></div>
-    <div><span class="stat-value">{{ missing_days }}</span><span class="stat-label">рабочих дней пропущено</span></div>
+  {% if ue_saved %}<p class="notice">УЕ обновлены, задач изменено: {{ ue_saved }}.</p>{% endif %}
+  {% if errors %}
+  <div class="alert">
+    <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
   </div>
+  {% endif %}
 
-  <ul class="days">
-    {% for day in days %}
-    {% if not day.is_future %}
-    <li class="day {% if day.is_weekend %}weekend{% endif %} {% if day.is_missing %}missing{% endif %}">
-      <span class="day-date">{{ day.date.day }} {{ day.weekday }}</span>
-      {% if day.report %}
-      <a class="day-body" href="/reports/{{ day.report.id }}">
-        {% for item in day.report.items[:3] %}
-        <span class="task-chip">{{ item.task_title }}</span>
-        {% endfor %}
-        {% if day.report.items|length > 3 %}
-        <span class="task-chip more">ещё {{ day.report.items|length - 3 }}</span>
-        {% endif %}
-      </a>
-      <span class="day-hours">{{ day.report.total_hours|hours }}</span>
-      {% elif day.is_missing %}
-      <a class="day-body empty" href="/reports/new?date={{ day.date }}">не заполнен</a>
-      <span class="day-hours">—</span>
-      {% else %}
-      <span class="day-body empty">—</span>
-      <span class="day-hours"></span>
-      {% endif %}
-    </li>
-    {% endif %}
-    {% endfor %}
-  </ul>
+  <form method="post" action="/reports/my/ue">
+    <input type="hidden" name="month" value="{{ month }}">
+
+    <div class="weeks">
+      {% for week in weeks %}
+      <details class="week" {% if week.current %}open{% endif %}>
+        <summary>
+          <span class="week-name">{{ week.number }} неделя</span>
+          <span class="week-range">{{ week.first|date_ru }} — {{ week.last|date_ru }}</span>
+          <span class="week-hours">{{ week.hours|hours }} ч</span>
+          <span class="week-ue">{{ week.ue|amount }} УЕ</span>
+        </summary>
+
+        <ul class="days">
+          {% for day in week.days %}
+          <li class="day {% if day.is_weekend %}weekend{% endif %} {% if day.is_missing %}missing{% endif %}">
+            {% if day.report %}
+            <a class="day-date" href="/reports/{{ day.report.id }}">{{ day.date.day }} {{ day.weekday }}</a>
+            <div class="day-tasks">
+              {% for item in day.report.items %}
+              <div class="task-line">
+                {% if item.task_url %}
+                <a class="task-name link" href="{{ item.task_url }}" target="_blank" rel="noopener noreferrer"
+                   title="{{ item.task_url }}">{{ item.task_title }}</a>
+                {% else %}
+                <span class="task-name">{{ item.task_title }}</span>
+                {% endif %}
+                <span class="task-hours">{{ item.hours|hours }} ч</span>
+                <input type="hidden" name="item_id" value="{{ item.id }}">
+                <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ" title="Условные единицы"
+                       value="{% if item.id in ue_raw %}{{ ue_raw[item.id] }}{% elif item.ue is not none %}{{ item.ue|amount }}{% endif %}">
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span class="day-date">{{ day.date.day }} {{ day.weekday }}</span>
+            {% if day.is_missing %}
+            <a class="day-body empty" href="/reports/new?date={{ day.date }}">не заполнен</a>
+            {% else %}
+            <span class="day-body empty">—</span>
+            {% endif %}
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endfor %}
+    </div>
+
+    <div class="actions actions-center">
+      <button type="submit" class="primary">Сохранить</button>
+    </div>
+    <p class="hint hint-center">
+      УЕ можно поправить в любой день, даже когда сам отчёт уже закрыт для правок.
+    </p>
+  </form>
 </section>
+<script>
+(function () {
+  var pick = document.getElementById('month-pick');
+  var open = document.getElementById('month-open');
+  if (!pick || !open) { return; }
+  open.addEventListener('click', function () {
+    if (typeof pick.showPicker === 'function') {
+      try { pick.showPicker(); return; } catch (error) { /* ниже запасной путь */ }
+    }
+    pick.focus();
+    pick.click();
+  });
+  pick.addEventListener('change', function () {
+    if (pick.value) { window.location.href = '/reports/my?month=' + pick.value; }
+  });
+})();
+</script>
 {% endblock %}
+

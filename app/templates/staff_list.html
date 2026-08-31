@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Сотрудники — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="monthhead">
+    <h1>Сотрудники</h1>
+    <a class="primary-link" href="/staff/new">Добавить сотрудника</a>
+  </div>
+
+  <div class="people">
+    {% for person in staff %}
+    <a class="person-row {% if not person.is_active %}off{% endif %}" href="/staff/{{ person.id }}">
+      <span class="person-name">{{ person.full_name }}</span>
+      <span class="person-meta">
+        {%- if person.position %}{{ person.position }}{% endif -%}
+        {%- if person.position and person.subdepartment %} · {% endif -%}
+        {%- if person.subdepartment %}{{ person.subdepartment }}{% endif -%}
+      </span>
+      <span class="person-login">{{ person.login }}</span>
+      <span class="person-role">{{ role_names[person.role] }}</span>
+      <span class="person-state">{{ 'активен' if person.is_active else 'отключён' }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

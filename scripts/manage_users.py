@@ -16,12 +16,13 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.models import User
 from app.security import hash_password
+from app.services.users import MIN_PASSWORD
 
 
 def ask_password() -> str:
     first = getpass.getpass("Пароль: ")
-    if len(first) < 10:
-        sys.exit("Пароль короче 10 символов — так нельзя.")
+    if len(first) < MIN_PASSWORD:
+        sys.exit(f"Пароль короче {MIN_PASSWORD} символов — так нельзя.")
     if first != getpass.getpass("Повторите: "):
         sys.exit("Пароли не совпали.")
     return first

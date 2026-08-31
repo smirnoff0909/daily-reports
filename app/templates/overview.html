@@ -1,72 +1,97 @@
 {% extends "base.html" %}
-{% block title %}Все сотрудники — {{ app_name }}{% endblock %}
+{% block title %}Сводный по отделу — {{ app_name }}{% endblock %}
 {% block content %}
 <section class="card">
-  <div class="monthhead">
-    <h1>{{ month_label }}</h1>
-    <div class="monthnav">
-      <a href="/reports?month={{ prev_month }}{% if selected_user_id %}&user_id={{ selected_user_id }}{% endif %}">←</a>
-      <a href="/reports?month={{ next_month }}{% if selected_user_id %}&user_id={{ selected_user_id }}{% endif %}">→</a>
+  <div class="monthpick">
+    <a class="daynav-step" href="/reports?month={{ prev_month }}" title="Месяц назад">←</a>
+    <h1 class="daynav-date">
+      <button type="button" class="monthbtn" id="month-open"
+              title="Выбрать месяц">{{ month_label|capitalize }}</button>
+      <input type="month" id="month-pick" value="{{ month }}" class="picker-hidden"
+             tabindex="-1" aria-label="Месяц">
+    </h1>
+    <a class="daynav-step" href="/reports?month={{ next_month }}" title="Месяц вперёд">→</a>
+  </div>
+
+  <div class="total-pair total-pair-center">
+    <div class="total">
+      <span class="total-value">{{ total_hours|hours }}</span>
+      <span class="total-label">часов за месяц</span>
+    </div>
+    <div class="total">
+      <span class="total-value">{{ total_ue|amount }}</span>
+      <span class="total-label">УЕ за месяц</span>
+    </div>
+    <div class="total">
+      <span class="total-value">{{ reported }}</span>
+      <span class="total-label">сотрудников отчитались</span>
     </div>
   </div>
 
-  <form class="filter" method="get" action="/reports">
-    <input type="hidden" name="month" value="{{ month }}">
-    <label>Сотрудник
-      <select name="user_id" onchange="this.form.submit()">
-        <option value="">все</option>
-        {% for employee in employees %}
-        <option value="{{ employee.id }}" {% if selected_user_id == employee.id %}selected{% endif %}>
-          {{ employee.full_name }}
-        </option>
-        {% endfor %}
-      </select>
-    </label>
-    <noscript><button type="submit">Показать</button></noscript>
-    <a class="export" href="/reports/export.xlsx?month={{ month }}{% if selected_user_id %}&user_id={{ selected_user_id }}{% endif %}">
-      Выгрузить в Excel
-    </a>
-  </form>
+  <p class="actions actions-center export-line">
+    <a class="export" href="/reports/export.xlsx?month={{ month }}">Выгрузить в Excel</a>
+  </p>
 
-  {% if totals %}
-  <table class="totals">
-    <thead>
-      <tr><th>Сотрудник</th><th>Дней</th><th>Задач</th><th>Часов</th></tr>
-    </thead>
-    <tbody>
-      {% for row in totals %}
-      <tr>
-        <td><a href="/reports?month={{ month }}&user_id={{ row.user.id }}">{{ row.user.full_name }}</a></td>
-        <td class="num">{{ row.days }}</td>
-        <td class="num">{{ row.tasks }}</td>
-        <td class="num strong">{{ row.hours|hours }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-    <tfoot>
-      <tr><td>Итого</td><td class="num"></td><td class="num"></td><td class="num strong">{{ total_hours|hours }}</td></tr>
-    </tfoot>
-  </table>
+  <div class="people">
+    {% for row in rows %}
+    <details class="person">
+      <summary>
+        <span class="person-name">{{ row.user.full_name }}</span>
+        <span class="person-meta">
+          {%- if row.user.position %}{{ row.user.position }}{% endif -%}
+          {%- if row.user.position and row.user.subdepartment %} · {% endif -%}
+          {%- if row.user.subdepartment %}{{ row.user.subdepartment }}{% endif -%}
+        </span>
+        <span class="person-days">{{ row.days|length }} дн.</span>
+        <span class="person-hours">{{ row.hours|hours }} ч</span>
+        <span class="person-ue">{{ row.ue|amount }} УЕ</span>
+      </summary>
 
-  <ul class="days">
-    {% for report in reports %}
-    <li class="day">
-      <span class="day-date">{{ report.report_date|date_ru }}</span>
-      <a class="day-body" href="/reports/{{ report.id }}">
-        <span class="who-name">{{ report.user.short_name }}</span>
-        {% for item in report.items[:2] %}
-        <span class="task-chip">{{ item.task_title }}</span>
+      {% if row.days %}
+      <ul class="days">
+        {% for report in row.days %}
+        <li class="day">
+          <a class="day-date" href="/reports/{{ report.id }}">{{ report.report_date|date_ru }}</a>
+          <div class="day-tasks">
+            {% for item in report.items %}
+            <div class="task-line">
+              {% if item.task_url %}
+              <a class="task-name link" href="{{ item.task_url }}" target="_blank" rel="noopener noreferrer"
+                 title="{{ item.task_url }}">{{ item.task_title }}</a>
+              {% else %}
+              <span class="task-name">{{ item.task_title }}</span>
+              {% endif %}
+              <span class="task-hours">{{ item.hours|hours }} ч</span>
+              <span class="task-ue">{% if item.ue is not none %}{{ item.ue|amount }} УЕ{% endif %}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </li>
         {% endfor %}
-        {% if report.items|length > 2 %}
-        <span class="task-chip more">ещё {{ report.items|length - 2 }}</span>
-        {% endif %}
-      </a>
-      <span class="day-hours">{{ report.total_hours|hours }}</span>
-    </li>
+      </ul>
+      {% else %}
+      <p class="empty-state">За {{ month_label }} отчётов нет.</p>
+      {% endif %}
+    </details>
     {% endfor %}
-  </ul>
-  {% else %}
-  <p class="empty-state">За этот месяц отчётов пока нет.</p>
-  {% endif %}
+  </div>
 </section>
+
+<script>
+(function () {
+  var pick = document.getElementById('month-pick');
+  var open = document.getElementById('month-open');
+  if (!pick || !open) { return; }
+  open.addEventListener('click', function () {
+    if (typeof pick.showPicker === 'function') {
+      try { pick.showPicker(); return; } catch (error) { /* ниже запасной путь */ }
+    }
+    pick.focus();
+    pick.click();
+  });
+  pick.addEventListener('change', function () {
+    if (pick.value) { window.location.href = '/reports?month=' + pick.value; }
+  });
+})();
+</script>
 {% endblock %}

@@ -16,6 +16,9 @@ MONTH_NAMES = [
 ]
 WEEKDAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 
+UE_LIMIT = Decimal("9999.99")
+UE_HOURS_PER_UNIT = Decimal("8")   # стандарт: одна УЕ — это восемь часов
+
 
 def today() -> date:
     return datetime.now(settings.tz).date()
@@ -55,6 +58,65 @@ def parse_date(raw: str | None) -> date:
     return today()
 
 
+def parse_id(raw: str | None) -> int | None:
+    """Номер из строки запроса или формы. Пусто и мусор -> None."""
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return None
+
+
+def parse_user_id(raw: str | None) -> int | None:
+    """Пустое значение фильтра ('все') и мусор -> None, то есть без фильтра."""
+    return parse_id(raw)
+
+
+def parse_ue(raw: str | None) -> tuple[Decimal | None, str | None]:
+    """Пустое поле — УЕ ещё не проставлены. Возвращает (значение, ошибку)."""
+    text = (raw or "").strip().replace(",", ".")
+    if not text:
+        return None, None
+    try:
+        value = Decimal(text).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        return None, "УЕ указаны не числом."
+    if value < 0:
+        return None, "УЕ не могут быть меньше нуля."
+    if value > UE_LIMIT:
+        return None, f"УЕ не могут быть больше {UE_LIMIT:g}."
+    return value, None
+
+
+def parse_task_url(raw: str | None) -> tuple[str | None, str | None]:
+    """Ссылка на задачу. Возвращает (значение, ошибку).
+
+    Адрес уходит в href, поэтому пускаем только http и https: со схемой вроде
+    javascript: ссылка стала бы способом выполнить чужой код в чужом браузере.
+    Адрес без схемы дополняем https:// — так удобнее вставлять из адресной строки.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None, None
+    if len(text) > 500:
+        return None, "ссылка длиннее 500 символов."
+    if "://" in text:
+        scheme = text.split("://", 1)[0].lower()
+        if scheme not in {"http", "https"}:
+            return None, "ссылка должна начинаться с http:// или https://."
+    elif text.lower().startswith(("javascript:", "data:", "vbscript:", "file:")):
+        return None, "ссылка должна начинаться с http:// или https://."
+    else:
+        text = f"https://{text}"
+    return text, None
+
+
+def default_ue(hours: Decimal) -> Decimal:
+    """Стандартный расчёт: УЕ = часы / 8. Введённое вручную значение важнее."""
+    return (hours / UE_HOURS_PER_UNIT).quantize(Decimal("0.01"))
+
+
 def can_edit(user: User, report_date: date) -> bool:
     """Свой отчёт правится внутри окна, руководитель правит без ограничений."""
     if report_date > today():
@@ -65,7 +127,11 @@ def can_edit(user: User, report_date: date) -> bool:
 
 
 def parse_items(
-    titles: list[str], hours: list[str], comments: list[str]
+    titles: list[str],
+    hours: list[str],
+    comments: list[str],
+    ues: list[str] | None = None,
+    urls: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Разбирает строки формы. Возвращает (строки, ошибки)."""
     items: list[dict] = []
@@ -75,8 +141,10 @@ def parse_items(
         title = raw_title.strip()
         raw_hours = hours[index].strip() if index < len(hours) else ""
         comment = comments[index].strip() if index < len(comments) else ""
+        raw_ue = ues[index].strip() if ues and index < len(ues) else ""
+        raw_url = urls[index].strip() if urls and index < len(urls) else ""
 
-        if not title and not raw_hours:
+        if not title and not raw_hours and not raw_ue and not raw_url:
             continue
 
         line = f"Строка {len(items) + 1}"
@@ -99,11 +167,26 @@ def parse_items(
             errors.append(f"{line}: за одну задачу нельзя списать больше 24 часов.")
             continue
 
+        ue, ue_error = parse_ue(raw_ue)
+        if ue_error:
+            errors.append(f"{line}: {ue_error}")
+            continue
+
+        if ue is None:
+            ue = default_ue(value)   # поле оставили пустым — считаем по стандарту
+
+        task_url, url_error = parse_task_url(raw_url)
+        if url_error:
+            errors.append(f"{line}: {url_error}")
+            continue
+
         items.append(
             {
                 "position": len(items),
                 "task_title": title,
                 "hours": value,
+                "ue": ue,
+                "task_url": task_url,
                 "comment": comment or None,
             }
         )
@@ -164,17 +247,95 @@ def save_report(
                     {
                         "task_title": item["task_title"],
                         "hours": str(item["hours"]),
+                        "ue": None if item["ue"] is None else str(item["ue"]),
+                        "task_url": item["task_url"],
                         "comment": item["comment"],
                     }
                     for item in items
                 ],
                 "total_hours": str(sum((i["hours"] for i in items), Decimal("0"))),
+                "total_ue": str(
+                    sum((i["ue"] or Decimal("0") for i in items), Decimal("0"))
+                ),
             },
         )
     )
     db.commit()
     db.refresh(report)
     return report
+
+
+def set_month_ue(
+    db: Session, owner: User, values: dict[int, str], actor: User
+) -> tuple[int, list[str]]:
+    """Правка УЕ из месяца: окно редактирования здесь не действует.
+
+    Значения проверяются целиком, и если хоть одно неверно — не пишем ничего.
+    Пустое поле снимает ранее проставленные УЕ. Возвращает (сколько изменено, ошибки).
+    """
+    if not values:
+        return 0, []
+
+    items = list(
+        db.scalars(
+            select(ReportItem)
+            .options(selectinload(ReportItem.report))
+            .where(ReportItem.id.in_(values.keys()))
+        )
+    )
+    by_id = {item.id: item for item in items}
+    if len(by_id) != len(values):
+        return 0, ["Часть задач уже не существует — обновите страницу."]
+
+    errors: list[str] = []
+    planned: dict[int, Decimal | None] = {}
+    for item_id, raw in values.items():
+        item = by_id[item_id]
+        if item.report.user_id != owner.id:
+            raise PermissionError("Чужие задачи править нельзя.")
+        ue, error = parse_ue(raw)
+        if error:
+            errors.append(f"«{item.task_title}»: {error}")
+            continue
+        if ue != item.ue:
+            planned[item_id] = ue
+
+    if errors:
+        return 0, errors
+    if not planned:
+        return 0, []
+
+    touched: dict[int, list[dict]] = {}
+    for item_id, ue in planned.items():
+        item = by_id[item_id]
+        touched.setdefault(item.report_id, []).append(
+            {
+                "task_title": item.task_title,
+                "ue_before": None if item.ue is None else str(item.ue),
+                "ue": None if ue is None else str(ue),
+            }
+        )
+        item.ue = ue
+
+    db.flush()
+    for report_id, changes in touched.items():
+        report = db.get(Report, report_id)
+        db.add(
+            AuditLog(
+                actor_id=actor.id,
+                entity="report",
+                entity_id=report_id,
+                action="ue",
+                payload={
+                    "report_date": report.report_date.isoformat(),
+                    "owner_id": owner.id,
+                    "items": changes,
+                    "total_ue": str(report.total_ue),
+                },
+            )
+        )
+    db.commit()
+    return len(planned), []
 
 
 def month_reports(
@@ -190,6 +351,68 @@ def month_reports(
     if user_id:
         query = query.where(Report.user_id == user_id)
     return list(db.scalars(query))
+
+
+def month_weeks(days: list[dict]) -> list[dict]:
+    """Дни месяца, разложенные по неделям с понедельника. Будущие дни не показываем."""
+    weeks: list[dict] = []
+    for day in days:
+        if day["is_future"]:
+            continue
+        if not weeks or day["date"].weekday() == 0:
+            weeks.append(
+                {"days": [], "hours": Decimal("0"), "ue": Decimal("0"), "current": False}
+            )
+        week = weeks[-1]
+        week["days"].append(day)
+        if day["report"] is not None:
+            week["hours"] += day["report"].total_hours
+            week["ue"] += day["report"].total_ue
+        if day["date"] == today():
+            week["current"] = True
+
+    for number, week in enumerate(weeks, start=1):
+        week["number"] = number
+        week["first"] = week["days"][0]["date"]
+        week["last"] = week["days"][-1]["date"]
+        week["filled"] = sum(1 for day in week["days"] if day["report"] is not None)
+        week["missing"] = sum(1 for day in week["days"] if day["is_missing"])
+    return weeks
+
+
+def month_by_employee(db: Session, first: date, employees: list[User]) -> list[dict]:
+    """Сотрудники месяца: итоги и дни с задачами внутри.
+
+    Активные сотрудники попадают в список даже без отчётов — так видно, кто не сдал.
+    """
+    rows: dict[int, dict] = {
+        employee.id: {
+            "user": employee,
+            "days": [],
+            "hours": Decimal("0"),
+            "ue": Decimal("0"),
+            "tasks": 0,
+        }
+        for employee in employees
+    }
+    for report in month_reports(db, first):
+        row = rows.get(report.user_id)
+        if row is None:  # отчёты отключённого сотрудника тоже показываем
+            row = rows[report.user_id] = {
+                "user": report.user,
+                "days": [],
+                "hours": Decimal("0"),
+                "ue": Decimal("0"),
+                "tasks": 0,
+            }
+        row["days"].append(report)
+        row["hours"] += report.total_hours
+        row["ue"] += report.total_ue
+        row["tasks"] += len(report.items)
+
+    for row in rows.values():
+        row["days"].sort(key=lambda report: report.report_date)
+    return sorted(rows.values(), key=lambda row: row["user"].full_name)
 
 
 def month_days(first: date, reports: list[Report]) -> list[dict]:
@@ -217,17 +440,9 @@ def month_days(first: date, reports: list[Report]) -> list[dict]:
     return days
 
 
-def totals_by_user(reports: list[Report]) -> list[dict]:
-    buckets: dict[int, dict] = {}
-    for report in reports:
-        bucket = buckets.setdefault(
-            report.user_id,
-            {"user": report.user, "hours": Decimal("0"), "days": 0, "tasks": 0},
-        )
-        bucket["hours"] += report.total_hours
-        bucket["days"] += 1
-        bucket["tasks"] += len(report.items)
-    return sorted(buckets.values(), key=lambda row: row["user"].full_name)
+def active_engineers(db: Session) -> list[User]:
+    """Кого ждём в сводке. Руководитель отчёты не заполняет, пустой строки по нему не нужно."""
+    return [user for user in active_users(db) if not user.is_manager]
 
 
 def active_users(db: Session) -> list[User]:

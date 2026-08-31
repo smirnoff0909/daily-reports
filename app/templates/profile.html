@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Личный кабинет — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card narrow profile">
+  <h1>Личный кабинет</h1>
+
+  {% if saved == 'password' %}<p class="notice">Пароль изменён.</p>{% endif %}
+  {% if errors %}
+  <div class="alert">
+    <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <dl class="card-fields">
+    <dt>ФИО</dt><dd>{{ user.full_name }}</dd>
+    <dt>Должность</dt><dd>{{ user.position or '—' }}</dd>
+    <dt>Подотдел</dt><dd>{{ user.subdepartment or '—' }}</dd>
+    <dt>Логин</dt><dd>{{ user.login }}</dd>
+    <dt>Роль</dt><dd>{{ role_names[user.role] }}</dd>
+  </dl>
+  <p class="hint">Карточку заполняет руководитель — если что-то не так, скажите ему.</p>
+
+  <h2>Смена пароля</h2>
+  <form method="post" action="/profile/password" class="stack">
+    <label>Текущий пароль
+      <input name="current" type="password" autocomplete="current-password" required>
+    </label>
+    <label>Новый пароль
+      <input name="password" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+    </label>
+    <label>Повторите новый
+      <input name="repeat" type="password" autocomplete="new-password" minlength="{{ min_password }}" required>
+    </label>
+    <div class="actions actions-center">
+      <button class="primary" type="submit">Сменить пароль</button>
+    </div>
+    <p class="hint">Не короче {{ min_password }} символов.</p>
+  </form>
+
+  <form method="post" action="/logout" class="leave-form">
+    <button class="leave-link" type="submit">Выйти из аккаунта</button>
+  </form>
+</section>
+{% endblock %}

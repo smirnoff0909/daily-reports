@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, Response
@@ -26,7 +26,10 @@ def _nav(user: User, first: date) -> dict:
 
 @router.get("/")
 def home(user: User = Depends(current_user)):
-    return RedirectResponse("/reports/new", status_code=303)
+    """Руководитель отчёты только смотрит, поэтому его главная — сводка."""
+    return RedirectResponse(
+        "/reports" if user.is_manager else "/reports/new", status_code=303
+    )
 
 
 @router.get("/reports/new")
@@ -36,22 +39,34 @@ def new_report(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    if user.is_manager:
+        return RedirectResponse("/reports", status_code=303)
+
     report_date = svc.parse_date(date_param)
     report = svc.get_report(db, user.id, report_date)
     rows = (
         [
-            {"task_title": item.task_title, "hours": item.hours, "comment": item.comment}
+            {
+                "task_title": item.task_title,
+                "hours": item.hours,
+                "ue": item.ue,
+                "task_url": item.task_url,
+                "comment": item.comment,
+            }
             for item in report.items
         ]
         if report
         else []
     )
+    next_date = report_date + timedelta(days=1)
     return templates.TemplateResponse(
         request,
         "report_form.html",
         {
             "user": user,
             "report_date": report_date,
+            "prev_date": report_date - timedelta(days=1),
+            "next_date": next_date if next_date <= svc.today() else None,
             "today": svc.today(),
             "rows": rows,
             "editable": svc.can_edit(user, report_date),
@@ -69,6 +84,9 @@ async def save_report(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    if user.is_manager:
+        return RedirectResponse("/reports", status_code=303)
+
     form = await request.form()
     report_date = svc.parse_date(form.get("report_date"))
 
@@ -79,6 +97,8 @@ async def save_report(
         [str(value) for value in form.getlist("task_title")],
         [str(value) for value in form.getlist("hours")],
         [str(value) for value in form.getlist("comment")],
+        [str(value) for value in form.getlist("ue")],
+        [str(value) for value in form.getlist("task_url")],
     )
 
     if errors:
@@ -86,6 +106,12 @@ async def save_report(
             {
                 "task_title": form.getlist("task_title")[index],
                 "hours": form.getlist("hours")[index],
+                "ue": form.getlist("ue")[index]
+                if index < len(form.getlist("ue"))
+                else "",
+                "task_url": form.getlist("task_url")[index]
+                if index < len(form.getlist("task_url"))
+                else "",
                 "comment": form.getlist("comment")[index]
                 if index < len(form.getlist("comment"))
                 else "",
@@ -98,6 +124,12 @@ async def save_report(
             {
                 "user": user,
                 "report_date": report_date,
+                "prev_date": report_date - timedelta(days=1),
+                "next_date": (
+                    report_date + timedelta(days=1)
+                    if report_date + timedelta(days=1) <= svc.today()
+                    else None
+                ),
                 "today": svc.today(),
                 "rows": rows,
                 "editable": True,
@@ -116,29 +148,91 @@ async def save_report(
     )
 
 
-@router.get("/reports/my")
-def my_reports(
+def _render_my_month(
     request: Request,
-    month: str | None = None,
+    user: User,
+    db: Session,
+    first: date,
     saved: str | None = None,
-    user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    ue_saved: int | None = None,
+    errors: list[str] | None = None,
+    ue_raw: dict[int, str] | None = None,
+    status_code: int = 200,
 ):
-    first = svc.parse_month(month)
     reports = svc.month_reports(db, first, user_id=user.id)
     days = svc.month_days(first, reports)
-    total = sum((report.total_hours for report in reports), start=0)
     return templates.TemplateResponse(
         request,
         "my_reports.html",
         {
             **_nav(user, first),
-            "days": days,
-            "total_hours": total,
-            "filled_days": len(reports),
-            "missing_days": sum(1 for day in days if day["is_missing"]),
+            "weeks": svc.month_weeks(days),
+            "total_hours": sum((report.total_hours for report in reports), start=0),
+            "total_ue": sum((report.total_ue for report in reports), start=0),
             "saved": saved,
+            "ue_saved": ue_saved,
+            "errors": errors or [],
+            "ue_raw": ue_raw or {},
         },
+        status_code=status_code,
+    )
+
+
+@router.get("/reports/my")
+def my_reports(
+    request: Request,
+    month: str | None = None,
+    saved: str | None = None,
+    ue_saved: int | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    if user.is_manager:
+        return RedirectResponse("/reports", status_code=303)
+
+    return _render_my_month(
+        request, user, db, svc.parse_month(month), saved=saved, ue_saved=ue_saved
+    )
+
+
+@router.post("/reports/my/ue")
+async def save_month_ue(
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """УЕ правятся из месяца в любой день, окно редактирования тут не действует."""
+    if user.is_manager:
+        return RedirectResponse("/reports", status_code=303)
+
+    form = await request.form()
+    first = svc.parse_month(str(form.get("month") or ""))
+
+    values: dict[int, str] = {}
+    raw_ue = [str(value) for value in form.getlist("ue")]
+    for index, raw_id in enumerate(form.getlist("item_id")):
+        item_id = svc.parse_id(str(raw_id))
+        if item_id is not None:
+            values[item_id] = raw_ue[index] if index < len(raw_ue) else ""
+
+    try:
+        changed, errors = svc.set_month_ue(db, owner=user, values=values, actor=user)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Чужие задачи править нельзя.")
+
+    if errors:
+        return _render_my_month(
+            request,
+            user,
+            db,
+            first,
+            errors=errors,
+            ue_raw=values,
+            status_code=400,
+        )
+
+    return RedirectResponse(
+        f"/reports/my?month={first:%Y-%m}&ue_saved={changed}", status_code=303
     )
 
 
@@ -146,22 +240,22 @@ def my_reports(
 def overview(
     request: Request,
     month: str | None = None,
-    user_id: int | None = None,
     manager: User = Depends(manager_only),
     db: Session = Depends(get_db),
 ):
+    """Сводный по отделу: месяц выбирается как в «моём месяце», сотрудник раскрывается в дни."""
     first = svc.parse_month(month)
-    reports = svc.month_reports(db, first, user_id=user_id)
+    rows = svc.month_by_employee(db, first, svc.active_engineers(db))
+
     return templates.TemplateResponse(
         request,
         "overview.html",
         {
             **_nav(manager, first),
-            "reports": reports,
-            "totals": svc.totals_by_user(reports),
-            "employees": svc.active_users(db),
-            "selected_user_id": user_id,
-            "total_hours": sum((report.total_hours for report in reports), start=0),
+            "rows": rows,
+            "reported": sum(1 for row in rows if row["days"]),
+            "total_hours": sum((row["hours"] for row in rows), start=0),
+            "total_ue": sum((row["ue"] for row in rows), start=0),
         },
     )
 
@@ -169,12 +263,12 @@ def overview(
 @router.get("/reports/export.xlsx")
 def export(
     month: str | None = None,
-    user_id: int | None = None,
+    user_id: str | None = None,
     manager: User = Depends(manager_only),
     db: Session = Depends(get_db),
 ):
     first = svc.parse_month(month)
-    reports = svc.month_reports(db, first, user_id=user_id)
+    reports = svc.month_reports(db, first, user_id=svc.parse_user_id(user_id))
     payload = build_workbook(first, reports)
     return Response(
         content=payload,
@@ -188,15 +282,19 @@ def export(
 @router.get("/reports/{report_id}")
 def report_detail(
     request: Request,
-    report_id: int,
+    report_id: str,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    # адрес разбираем сами: «/reports/что-угодно» должно давать 404, а не ошибку разбора
+    number = svc.parse_id(report_id)
     report = (
         db.query(Report)
         .options(selectinload(Report.items), selectinload(Report.user))
-        .filter(Report.id == report_id)
+        .filter(Report.id == number)
         .one_or_none()
+        if number is not None
+        else None
     )
     if report is None:
         raise HTTPException(status_code=404, detail="Отчёт не найден.")
