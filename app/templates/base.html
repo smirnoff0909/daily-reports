@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+{% if user %}
+<header class="topbar">
+  <a class="brand" href="/reports/new">{{ app_name }}</a>
+  <nav class="nav">
+    <a href="/reports/new" {% if request.url.path == '/reports/new' %}class="here"{% endif %}>Сегодня</a>
+    <a href="/reports/my" {% if request.url.path == '/reports/my' %}class="here"{% endif %}>Мой месяц</a>
+    {% if user.is_manager %}
+    <a href="/reports" {% if request.url.path == '/reports' %}class="here"{% endif %}>Все сотрудники</a>
+    {% endif %}
+  </nav>
+  <form class="signout" method="post" action="/logout">
+    <span class="who">{{ user.short_name }}</span>
+    <button type="submit">Выйти</button>
+  </form>
+</header>
+{% endif %}
+<main class="page">
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

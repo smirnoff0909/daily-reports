@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Отчёт за {{ report_date|date_ru }} — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="dayhead">
+    <div>
+      <h1>{{ report_date|date_ru }}</h1>
+      <p class="lead">
+        {% if existing %}Отчёт уже сохранён — можно поправить и сохранить заново.
+        {% else %}Что сделано за день и сколько времени заняло.{% endif %}
+      </p>
+    </div>
+    <div class="total" id="total-box">
+      <span class="total-value" id="total-value">0</span>
+      <span class="total-label">часов за день</span>
+    </div>
+  </div>
+
+  {% if errors %}
+  <div class="alert">
+    <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if not editable %}
+  <p class="alert">
+    Этот день закрыт для правок: свои отчёты можно менять {{ edit_window_days }} дня.
+    Обратитесь к руководителю.
+  </p>
+  {% endif %}
+
+  <form method="post" action="/reports" id="report-form" {% if not editable %}class="locked"{% endif %}>
+    <input type="hidden" name="report_date" value="{{ report_date }}">
+    <div class="rows" id="rows">
+      {% for row in rows %}
+      <div class="row">
+        <div class="row-main">
+          <input class="task" name="task_title" maxlength="200" placeholder="Название задачи"
+                 value="{{ row.task_title }}" {% if not editable %}disabled{% endif %} required>
+          <input class="hours" name="hours" inputmode="decimal" placeholder="ч"
+                 value="{{ row.hours }}" {% if not editable %}disabled{% endif %} required>
+          <button type="button" class="drop" title="Убрать строку" {% if not editable %}disabled{% endif %}>×</button>
+        </div>
+        <input class="comment" name="comment" placeholder="Комментарий, если нужен"
+               value="{{ row.comment or '' }}" {% if not editable %}disabled{% endif %}>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if editable %}
+    <div class="actions">
+      <button type="button" id="add-row">Добавить задачу</button>
+      <button type="submit" class="primary">Сохранить отчёт</button>
+    </div>
+    {% endif %}
+  </form>
+
+  <p class="hint">
+    Другой день:
+    <input type="date" id="jump" value="{{ report_date }}" max="{{ today }}">
+  </p>
+</section>
+
+<template id="row-template">
+  <div class="row">
+    <div class="row-main">
+      <input class="task" name="task_title" maxlength="200" placeholder="Название задачи" required>
+      <input class="hours" name="hours" inputmode="decimal" placeholder="ч" required>
+      <button type="button" class="drop" title="Убрать строку">×</button>
+    </div>
+    <input class="comment" name="comment" placeholder="Комментарий, если нужен">
+  </div>
+</template>
+
+<script>
+(function () {
+  var rows = document.getElementById('rows');
+  var template = document.getElementById('row-template');
+  var addButton = document.getElementById('add-row');
+  var totalValue = document.getElementById('total-value');
+  var jump = document.getElementById('jump');
+
+  function recalc() {
+    var sum = 0;
+    rows.querySelectorAll('input.hours').forEach(function (input) {
+      var value = parseFloat(input.value.replace(',', '.'));
+      if (!isNaN(value)) { sum += value; }
+    });
+    totalValue.textContent = String(Math.round(sum * 100) / 100).replace('.', ',');
+    document.getElementById('total-box').classList.toggle('over', sum > 12);
+  }
+
+  function addRow(focus) {
+    var node = template.content.cloneNode(true);
+    rows.appendChild(node);
+    if (focus) { rows.lastElementChild.querySelector('input.task').focus(); }
+  }
+
+  if (addButton) {
+    addButton.addEventListener('click', function () { addRow(true); });
+  }
+  rows.addEventListener('click', function (event) {
+    if (!event.target.classList.contains('drop')) { return; }
+    var row = event.target.closest('.row');
+    if (rows.children.length > 1) { row.remove(); } else {
+      row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+    }
+    recalc();
+  });
+  rows.addEventListener('input', recalc);
+  if (jump) {
+    jump.addEventListener('change', function () {
+      window.location.href = '/reports/new?date=' + jump.value;
+    });
+  }
+  if (!rows.children.length && addButton) { addRow(false); }
+  recalc();
+})();
+</script>
+{% endblock %}

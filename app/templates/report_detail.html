@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ report.report_date|date_ru }} — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="dayhead">
+    <div>
+      <h1>{{ report.report_date|date_ru }}</h1>
+      <p class="lead">{{ report.user.full_name }}</p>
+    </div>
+    <div class="total">
+      <span class="total-value">{{ report.total_hours|hours }}</span>
+      <span class="total-label">часов за день</span>
+    </div>
+  </div>
+
+  <table class="items">
+    <thead><tr><th>Задача</th><th class="num">Часы</th></tr></thead>
+    <tbody>
+      {% for item in report.items %}
+      <tr>
+        <td>
+          {{ item.task_title }}
+          {% if item.comment %}<span class="comment">{{ item.comment }}</span>{% endif %}
+        </td>
+        <td class="num">{{ item.hours|hours }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="actions">
+    {% if editable %}<a class="primary-link" href="/reports/new?date={{ report.report_date }}">Изменить отчёт</a>{% endif %}
+    <a href="/reports/my?month={{ report.report_date.strftime('%Y-%m') }}">К месяцу</a>
+  </p>
+
+  {% if history %}
+  <h2>История изменений</h2>
+  <ul class="history">
+    {% for entry in history %}
+    <li>
+      <span class="when">{{ entry.created_at|datetime_ru }}</span>
+      <span class="what">{{ 'создан' if entry.action == 'create' else 'изменён' }}</span>
+      <span class="who-name">{{ entry.actor.short_name }}</span>
+      {% if entry.payload %}<span class="num">{{ entry.payload.total_hours }} ч</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

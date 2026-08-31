@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Мой месяц — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="monthhead">
+    <h1>{{ month_label }}</h1>
+    <div class="monthnav">
+      <a href="/reports/my?month={{ prev_month }}">←</a>
+      <a href="/reports/my?month={{ next_month }}">→</a>
+    </div>
+  </div>
+
+  {% if saved %}<p class="notice">Отчёт за {{ saved }} сохранён.</p>{% endif %}
+
+  <div class="stats">
+    <div><span class="stat-value">{{ total_hours|hours }}</span><span class="stat-label">часов за месяц</span></div>
+    <div><span class="stat-value">{{ filled_days }}</span><span class="stat-label">дней заполнено</span></div>
+    <div><span class="stat-value">{{ missing_days }}</span><span class="stat-label">рабочих дней пропущено</span></div>
+  </div>
+
+  <ul class="days">
+    {% for day in days %}
+    {% if not day.is_future %}
+    <li class="day {% if day.is_weekend %}weekend{% endif %} {% if day.is_missing %}missing{% endif %}">
+      <span class="day-date">{{ day.date.day }} {{ day.weekday }}</span>
+      {% if day.report %}
+      <a class="day-body" href="/reports/{{ day.report.id }}">
+        {% for item in day.report.items[:3] %}
+        <span class="task-chip">{{ item.task_title }}</span>
+        {% endfor %}
+        {% if day.report.items|length > 3 %}
+        <span class="task-chip more">ещё {{ day.report.items|length - 3 }}</span>
+        {% endif %}
+      </a>
+      <span class="day-hours">{{ day.report.total_hours|hours }}</span>
+      {% elif day.is_missing %}
+      <a class="day-body empty" href="/reports/new?date={{ day.date }}">не заполнен</a>
+      <span class="day-hours">—</span>
+      {% else %}
+      <span class="day-body empty">—</span>
+      <span class="day-hours"></span>
+      {% endif %}
+    </li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

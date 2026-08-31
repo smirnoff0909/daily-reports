@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Вход — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="signin">
+  <h1>{{ app_name }}</h1>
+  <p class="lead">Ежедневные отчёты о работе. Войдите под своей учётной записью.</p>
+  {% if error %}<p class="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/login" class="stack">
+    <label>Логин
+      <input name="login" value="{{ login or '' }}" autocomplete="username" autofocus required>
+    </label>
+    <label>Пароль
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="primary" type="submit">Войти</button>
+  </form>
+  <p class="hint">Учётные записи заводит администратор. Забыли пароль — напишите ему.</p>
+</div>
+{% endblock %}

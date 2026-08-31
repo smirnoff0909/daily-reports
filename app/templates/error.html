@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>{{ code }}</h1>
+  <p>{{ message }}</p>
+  <p><a href="/reports/new">Вернуться к отчёту за сегодня</a></p>
+</section>
+{% endblock %}
