@@ -61,7 +61,7 @@
                 {% endif %}
                 <span class="task-hours">{{ item.hours|hours }} ч</span>
                 <input type="hidden" name="item_id" value="{{ item.id }}">
-                <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ" title="Условные единицы"
+                <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ" title="Условные единицы" autocomplete="off"
                        value="{% if item.id in ue_raw %}{{ ue_raw[item.id] }}{% elif item.ue is not none %}{{ item.ue|amount }}{% endif %}">
               </div>
               {% endfor %}

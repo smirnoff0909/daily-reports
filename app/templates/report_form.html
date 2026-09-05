@@ -55,17 +55,17 @@
           <input class="task" name="task_title" maxlength="200" placeholder="Название задачи"
                  list="task-titles" autocomplete="off"
                  value="{{ row.task_title }}" {% if not editable %}disabled{% endif %} required>
-          <input class="hours" name="hours" inputmode="decimal" placeholder="ч"
+          <input class="hours" name="hours" inputmode="decimal" placeholder="ч" autocomplete="off"
                  value="{{ row.hours }}" {% if not editable %}disabled{% endif %} required>
-          <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ"
+          <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ" autocomplete="off"
                  title="Условные единицы: по умолчанию часы ÷ 8"
                  value="{{ row.ue if row.ue is not none else '' }}" {% if not editable %}disabled{% endif %}>
           <button type="button" class="drop" title="Убрать строку" {% if not editable %}disabled{% endif %}>×</button>
         </div>
         <div class="row-extra">
-          <input class="comment" name="comment" placeholder="Комментарий, если нужен"
+          <input class="comment" name="comment" placeholder="Комментарий, если нужен" autocomplete="off"
                  value="{{ row.comment or '' }}" {% if not editable %}disabled{% endif %}>
-          <input class="link" name="task_url" placeholder="Ссылка на задачу"
+          <input class="link" name="task_url" placeholder="Ссылка на задачу" autocomplete="off"
                  value="{{ row.task_url or '' }}" {% if not editable %}disabled{% endif %}>
         </div>
       </div>
@@ -93,14 +93,14 @@
     <div class="row-main">
       <input class="task" name="task_title" maxlength="200" placeholder="Название задачи"
              list="task-titles" autocomplete="off" required>
-      <input class="hours" name="hours" inputmode="decimal" placeholder="ч" required>
-      <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ"
+      <input class="hours" name="hours" inputmode="decimal" placeholder="ч" autocomplete="off" required>
+      <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ" autocomplete="off"
              title="Условные единицы: по умолчанию часы ÷ 8">
       <button type="button" class="drop" title="Убрать строку">×</button>
     </div>
     <div class="row-extra">
-      <input class="comment" name="comment" placeholder="Комментарий, если нужен">
-      <input class="link" name="task_url" placeholder="Ссылка на задачу">
+      <input class="comment" name="comment" placeholder="Комментарий, если нужен" autocomplete="off">
+      <input class="link" name="task_url" placeholder="Ссылка на задачу" autocomplete="off">
     </div>
   </div>
 </template>
