@@ -67,6 +67,7 @@
                  value="{{ row.comment or '' }}" {% if not editable %}disabled{% endif %}>
           <input class="link" name="task_url" placeholder="Ссылка на задачу" autocomplete="off"
                  value="{{ row.task_url or '' }}" {% if not editable %}disabled{% endif %}>
+          <input type="hidden" class="bingo-scores" name="bingo" value="{{ row.bingo or '' }}">
         </div>
       </div>
       {% endfor %}
@@ -131,6 +132,7 @@
     <div class="row-extra">
       <input class="comment" name="comment" placeholder="Комментарий, если нужен" autocomplete="off">
       <input class="link" name="task_url" placeholder="Ссылка на задачу" autocomplete="off">
+      <input type="hidden" class="bingo-scores" name="bingo" value="">
     </div>
   </div>
 </template>
@@ -143,71 +145,42 @@
   var totalValue = document.getElementById('total-value');
   var ueValue = document.getElementById('ue-value');
   var jump = document.getElementById('jump');
-  var knownLinks = {};
+
+  // задачи этого месяца: по названию помним ссылку и выбор бинго
+  var knownTasks = {};
   try {
     JSON.parse(document.getElementById('task-links').textContent).forEach(function (task) {
-      if (task.url) { knownLinks[task.title.trim().toLowerCase()] = task.url; }
+      knownTasks[task.title.trim().toLowerCase()] = task;
     });
   } catch (error) { /* без подсказок обойдёмся */ }
 
   var bingoDialog = document.getElementById('bingo-dialog');
   var bingoHours = document.getElementById('bingo-hours');
   var bingoValue = document.getElementById('bingo-value');
-  var bingoWeights = {};
+  var bingoFactors = [];
   var bingoRow = null;
   if (bingoDialog) {
-    JSON.parse(document.getElementById('bingo-data').textContent).forEach(function (factor) {
-      bingoWeights[factor.key] = factor.weight;
-    });
+    bingoFactors = JSON.parse(document.getElementById('bingo-data').textContent);
   }
 
-  function bingoTotal() {
-    var hours = parseFloat(bingoHours.value.replace(',', '.'));
-    if (isNaN(hours)) { hours = 0; }
+  function bingoShare(scores) {
+    // множитель к часам: (1 + сумма коэффициентов) / 5. Простая задача даёт ровно единицу
     var sum = 1;
-    var count = 0;
-    bingoDialog.querySelectorAll('select[data-key]').forEach(function (select) {
-      sum += 1 + bingoWeights[select.dataset.key] * parseFloat(select.value) / 100;
-      count += 1;
+    bingoFactors.forEach(function (factor) {
+      var score = scores && scores[factor.key] ? scores[factor.key] : 0;
+      sum += 1 + factor.weight * score / 100;
     });
-    return Math.round(hours / 8 * sum / (count + 1) * 100) / 100;
+    return sum / (bingoFactors.length + 1);
   }
 
-  function bingoRefresh() {
-    bingoValue.textContent = String(bingoTotal()).replace('.', ',');
+  function rowScores(row) {
+    var field = row.querySelector('input.bingo-scores');
+    if (!field || !field.value) { return null; }
+    try { return JSON.parse(field.value); } catch (error) { return null; }
   }
 
-  function openBingo(row) {
-    bingoRow = row;
-    var hoursField = row.querySelector('input.hours');
-    bingoHours.value = hoursField ? hoursField.value : '';
-    // каждый расчёт начинаем с простой задачи
-    bingoDialog.querySelectorAll('select[data-key]').forEach(function (select) {
-      select.selectedIndex = 0;
-    });
-    bingoRefresh();
-    if (typeof bingoDialog.showModal === 'function') { bingoDialog.showModal(); }
-    else { bingoDialog.setAttribute('open', ''); }
-  }
-
-  if (bingoDialog) {
-    bingoDialog.addEventListener('input', bingoRefresh);
-    bingoDialog.addEventListener('change', bingoRefresh);
-    document.getElementById('bingo-cancel').addEventListener('click', function () {
-      bingoDialog.close();
-    });
-    document.getElementById('bingo-apply').addEventListener('click', function () {
-      if (!bingoRow) { bingoDialog.close(); return; }
-      var hoursField = bingoRow.querySelector('input.hours');
-      var ueField = bingoRow.querySelector('input.ue');
-      if (hoursField && bingoHours.value) { hoursField.value = bingoHours.value; }
-      if (ueField) {
-        ueField.value = String(bingoTotal()).replace('.', ',');
-        ueField.dataset.touched = '1';
-      }
-      bingoDialog.close();
-      recalc();
-    });
+  function ueOf(hours, scores) {
+    return Math.round(hours / 8 * bingoShare(scores) * 100) / 100;
   }
 
   function sumOf(selector) {
@@ -226,6 +199,103 @@
     document.getElementById('total-box').classList.toggle('over', sum > 12);
   }
 
+  function fillUe(row) {
+    var hoursField = row.querySelector('input.hours');
+    var ueField = row.querySelector('input.ue');
+    if (!hoursField || !ueField || ueField.dataset.touched) { return; }
+    var hours = parseFloat(hoursField.value.replace(',', '.'));
+    ueField.value = isNaN(hours)
+      ? ''
+      : String(ueOf(hours, rowScores(row))).replace('.', ',');
+  }
+
+  function fillFromTask(row) {
+    // задачу уже заносили в этом месяце — подставляем её ссылку и её бинго
+    var taskField = row.querySelector('input.task');
+    if (!taskField) { return; }
+    var task = knownTasks[taskField.value.trim().toLowerCase()];
+    var linkField = row.querySelector('input.link');
+    var scoreField = row.querySelector('input.bingo-scores');
+
+    if (linkField && !linkField.dataset.touched) {
+      if (task && task.url) {
+        linkField.value = task.url;
+        linkField.dataset.auto = '1';
+      } else if (linkField.dataset.auto) {
+        linkField.value = '';   // задачу переименовали — чужая ссылка ни к чему
+        delete linkField.dataset.auto;
+      }
+    }
+    if (scoreField && !scoreField.dataset.touched) {
+      if (task && task.bingo) {
+        scoreField.value = JSON.stringify(task.bingo);
+        scoreField.dataset.auto = '1';
+      } else if (scoreField.dataset.auto) {
+        scoreField.value = '';
+        delete scoreField.dataset.auto;
+      }
+      fillUe(row);
+    }
+  }
+
+  function bingoChoice() {
+    var scores = {};
+    bingoDialog.querySelectorAll('select[data-key]').forEach(function (select) {
+      scores[select.dataset.key] = parseFloat(select.value);
+    });
+    return scores;
+  }
+
+  function bingoRefresh() {
+    var hours = parseFloat(bingoHours.value.replace(',', '.'));
+    if (isNaN(hours)) { hours = 0; }
+    bingoValue.textContent = String(ueOf(hours, bingoChoice())).replace('.', ',');
+  }
+
+  function openBingo(row) {
+    bingoRow = row;
+    var hoursField = row.querySelector('input.hours');
+    bingoHours.value = hoursField ? hoursField.value : '';
+    var scores = rowScores(row);   // прошлый выбор строки, если он уже есть
+    bingoDialog.querySelectorAll('select[data-key]').forEach(function (select) {
+      var score = scores ? scores[select.dataset.key] : null;
+      select.value = (score === undefined || score === null)
+        ? select.options[0].value
+        : String(score);
+      if (select.selectedIndex < 0) { select.selectedIndex = 0; }
+    });
+    bingoRefresh();
+    if (typeof bingoDialog.showModal === 'function') { bingoDialog.showModal(); }
+    else { bingoDialog.setAttribute('open', ''); }
+  }
+
+  if (bingoDialog) {
+    bingoDialog.addEventListener('input', bingoRefresh);
+    bingoDialog.addEventListener('change', bingoRefresh);
+    document.getElementById('bingo-cancel').addEventListener('click', function () {
+      bingoDialog.close();
+    });
+    document.getElementById('bingo-apply').addEventListener('click', function () {
+      if (!bingoRow) { bingoDialog.close(); return; }
+      var hoursField = bingoRow.querySelector('input.hours');
+      var ueField = bingoRow.querySelector('input.ue');
+      var scoreField = bingoRow.querySelector('input.bingo-scores');
+      if (hoursField && bingoHours.value) { hoursField.value = bingoHours.value; }
+      if (scoreField) {
+        scoreField.value = JSON.stringify(bingoChoice());
+        scoreField.dataset.touched = '1';   // выбрано руками, подсказка это не перебьёт
+        delete scoreField.dataset.auto;
+      }
+      if (ueField) {
+        // дальше УЕ считаются от бинго: поправят часы — пересчитается
+        delete ueField.dataset.touched;
+        fillUe(bingoRow);
+      }
+      bingoDialog.close();
+      recalc();
+    });
+  }
+
   function addRow(focus) {
     var node = template.content.cloneNode(true);
     rows.appendChild(node);
@@ -235,6 +305,7 @@
   if (addButton) {
     addButton.addEventListener('click', function () { addRow(true); });
   }
+
   rows.addEventListener('click', function (event) {
     if (event.target.classList.contains('ue') && bingoDialog) {
       openBingo(event.target.closest('.row'));
@@ -253,36 +324,12 @@
     }
     recalc();
   });
-  function fillUe(row) {
-    var hoursField = row.querySelector('input.hours');
-    var ueField = row.querySelector('input.ue');
-    if (!hoursField || !ueField || ueField.dataset.touched) { return; }
-    var hours = parseFloat(hoursField.value.replace(',', '.'));
-    ueField.value = isNaN(hours)
-      ? ''
-      : String(Math.round(hours / 8 * 100) / 100).replace('.', ',');
-  }
-
-  function fillLink(row) {
-    var taskField = row.querySelector('input.task');
-    var linkField = row.querySelector('input.link');
-    if (!taskField || !linkField || linkField.dataset.touched) { return; }
-    var url = knownLinks[taskField.value.trim().toLowerCase()];
-    if (url) {
-      linkField.value = url;
-      linkField.dataset.auto = '1';
-    } else if (linkField.dataset.auto) {
-      // задачу переименовали — старая ссылка больше не к месту
-      linkField.value = '';
-      delete linkField.dataset.auto;
-    }
-  }
 
   rows.addEventListener('input', function (event) {
     var field = event.target;
     if (field.classList.contains('ue')) { field.dataset.touched = '1'; }
     if (field.classList.contains('hours')) { fillUe(field.closest('.row')); }
-    if (field.classList.contains('task')) { fillLink(field.closest('.row')); }
+    if (field.classList.contains('task')) { fillFromTask(field.closest('.row')); }
     if (field.classList.contains('link')) {
       field.dataset.touched = '1';
       delete field.dataset.auto;
@@ -290,10 +337,11 @@
     recalc();
   });
 
-  // уже сохранённые УЕ и ссылки считаем ручными: правки их не затрут
-  rows.querySelectorAll('input.ue, input.link').forEach(function (field) {
+  // сохранённые УЕ, ссылки и бинго считаем выбранными вручную: подсказки их не затрут
+  rows.querySelectorAll('input.ue, input.link, input.bingo-scores').forEach(function (field) {
     if (field.value) { field.dataset.touched = '1'; }
   });
+
   if (jump) {
     // на десктопе календарь открывается по клику в любое место поля, не только по значку
     jump.addEventListener('click', function () {

@@ -109,6 +109,7 @@ class ReportItem(Base):
     hours: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
     ue: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     task_url: Mapped[str | None] = mapped_column(String(500))
+    bingo: Mapped[dict | None] = mapped_column(JSON)   # выбор бинго, чтобы подсказать в следующий раз
     comment: Mapped[str | None] = mapped_column(Text)
 
     report: Mapped[Report] = relationship(back_populates="items")

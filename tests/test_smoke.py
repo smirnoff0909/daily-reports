@@ -138,3 +138,45 @@ def test_bingo_ue():
         assert form.status_code == 200
         assert 'id="bingo-dialog"' in form.text
         assert "Мультидисциплинарность" in form.text
+
+
+def test_bingo_follows_task():
+    """Выбор бинго сохраняется и подтягивается вместе с задачей в другой день месяца."""
+    import json
+
+    from app.services import reports as svc
+
+    assert svc.parse_bingo('{"complexity": 3}') is None          # набор неполный
+    assert svc.parse_bingo('{"complexity": 7, "uncertainty": 0, '
+                           '"impact": 0, "breadth": 0}') is None  # балла 7 в таблице нет
+    assert svc.parse_bingo("не json") is None
+
+    seed()
+    with TestClient(app) as client:
+        login(client, "ivanov", "engineer-pass-1")
+
+        scores = {"complexity": 3, "uncertainty": 8, "impact": 2, "breadth": 0}
+        today = date.today()
+        saved = client.post(
+            "/reports",
+            data={
+                "report_date": today.isoformat(),
+                "task_title": ["Расчёт балки перекрытия"],
+                "hours": ["8"],
+                "comment": [""],
+                "ue": ["1,36"],
+                "task_url": [""],
+                "bingo": [json.dumps(scores)],
+            },
+            follow_redirects=False,
+        )
+        assert saved.status_code == 303, saved.text
+
+        other = today.replace(day=1) if today.day > 1 else today
+        form = client.get(f"/reports/new?date={other.isoformat()}")
+        assert form.status_code == 200
+        suggestions = json.loads(
+            form.text.split('id="task-links">')[1].split("</script>")[0]
+        )
+        found = [t for t in suggestions if t["title"] == "Расчёт балки перекрытия"]
+        assert found and found[0]["bingo"] == scores, suggestions

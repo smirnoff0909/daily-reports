@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -181,6 +182,32 @@ def default_ue(hours: Decimal) -> Decimal:
     return (hours / UE_HOURS_PER_UNIT).quantize(Decimal("0.01"))
 
 
+def parse_bingo(raw: str | None) -> dict[str, int] | None:
+    """Выбор бинго из скрытого поля строки.
+
+    Значения приходят из браузера, поэтому берём только известные факторы
+    и только их варианты: иначе в базу приедет что угодно. Неполный или
+    неузнанный набор считаем отсутствующим.
+    """
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    scores: dict[str, int] = {}
+    for factor in BINGO_FACTORS:
+        value = data.get(factor["key"])
+        allowed = {option["score"] for option in factor["options"]}
+        if isinstance(value, bool) or value not in allowed:
+            return None
+        scores[factor["key"]] = int(value)
+    return scores
+
+
 def can_edit(user: User, report_date: date) -> bool:
     """Свой отчёт правится внутри окна, руководитель правит без ограничений."""
     if report_date > today():
@@ -196,6 +223,7 @@ def parse_items(
     comments: list[str],
     ues: list[str] | None = None,
     urls: list[str] | None = None,
+    bingos: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Разбирает строки формы. Возвращает (строки, ошибки)."""
     items: list[dict] = []
@@ -207,6 +235,7 @@ def parse_items(
         comment = comments[index].strip() if index < len(comments) else ""
         raw_ue = ues[index].strip() if ues and index < len(ues) else ""
         raw_url = urls[index].strip() if urls and index < len(urls) else ""
+        raw_bingo = bingos[index].strip() if bingos and index < len(bingos) else ""
 
         if not title and not raw_hours and not raw_ue and not raw_url:
             continue
@@ -251,6 +280,7 @@ def parse_items(
                 "hours": value,
                 "ue": ue,
                 "task_url": task_url,
+                "bingo": parse_bingo(raw_bingo),
                 "comment": comment or None,
             }
         )
@@ -421,7 +451,7 @@ def month_task_titles(db: Session, user_id: int, report_date: date) -> list[dict
     """Задачи сотрудника за месяц: название и ссылка. Свежие — первыми, повторы убраны."""
     start, end = month_bounds(report_date.replace(day=1))
     rows = db.execute(
-        select(ReportItem.task_title, ReportItem.task_url)
+        select(ReportItem.task_title, ReportItem.task_url, ReportItem.bingo)
         .join(Report, ReportItem.report_id == Report.id)
         .where(
             Report.user_id == user_id,
@@ -432,17 +462,20 @@ def month_task_titles(db: Session, user_id: int, report_date: date) -> list[dict
     ).all()
 
     seen: dict[str, dict] = {}
-    for title, url in rows:
+    for title, url, bingo in rows:
         name = (title or "").strip()
         key = name.casefold()
         if not key:
             continue
         known = seen.get(key)
         if known is None:
-            seen[key] = {"title": name, "url": url or ""}
-        elif not known["url"] and url:
-            # в свежей записи ссылки не было — берём из более старой
+            seen[key] = {"title": name, "url": url or "", "bingo": bingo or None}
+            continue
+        # в свежей записи поля могло не быть — добираем из более старых
+        if not known["url"] and url:
             known["url"] = url
+        if not known["bingo"] and bingo:
+            known["bingo"] = bingo
     return list(seen.values())
 
 
