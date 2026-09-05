@@ -9,7 +9,7 @@
 - FastAPI, серверные шаблоны Jinja2, немного обычного JavaScript — сборки фронтенда нет
 - PostgreSQL, миграции через Alembic
 - Сессия в подписанной cookie, пароли в argon2
-- Caddy как обратный прокси с автоматическим сертификатом
+- Наружу сайт отдаёт фронтовой веб-сервер площадки, приложение слушает только loopback
 - Всё поднимается через Docker Compose
 
 ## Модель данных
@@ -26,7 +26,7 @@
 ```bash
 cp .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # в SECRET_KEY
-# заполните POSTGRES_PASSWORD и SITE_ADDRESS
+# заполните POSTGRES_PASSWORD, при необходимости APP_PORT
 docker compose up -d --build
 ```
 
