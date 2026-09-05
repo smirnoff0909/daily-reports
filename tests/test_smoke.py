@@ -118,3 +118,23 @@ def test_task_suggestions():
         assert form.status_code == 200
         assert '<option value="Ревизия задвижки">' in form.text
         assert "https://tracker.example/12" in form.text
+
+
+def test_bingo_ue():
+    """Бинго ненормированных работ: пример из bingo.xlsx даёт те же 5,44 УЕ."""
+    from decimal import Decimal
+
+    from app.services import reports as svc
+
+    hard = {"complexity": 3, "uncertainty": 8, "impact": 2, "breadth": 0}
+    assert svc.bingo_ue(Decimal("32"), hard) == Decimal("5.44")
+    # все факторы минимальные — обычные часы, делённые на восемь
+    assert svc.bingo_ue(Decimal("8"), {}) == Decimal("1.00")
+
+    seed()
+    with TestClient(app) as client:
+        login(client, "ivanov", "engineer-pass-1")
+        form = client.get("/reports/new")
+        assert form.status_code == 200
+        assert 'id="bingo-dialog"' in form.text
+        assert "Мультидисциплинарность" in form.text

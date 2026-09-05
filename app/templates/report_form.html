@@ -88,6 +88,36 @@
 </datalist>
 <script type="application/json" id="task-links">{{ tasks|tojson }}</script>
 
+{% set factors = bingo|default([], true) %}
+{% if editable and factors %}
+<dialog id="bingo-dialog" class="bingo">
+  <h2>Расчёт УЕ</h2>
+  <label class="bingo-line">
+    <span>Часы</span>
+    <input type="text" id="bingo-hours" inputmode="decimal" autocomplete="off">
+  </label>
+  {% for factor in factors %}
+  <label class="bingo-line">
+    <span>{{ factor.title }}</span>
+    <select data-key="{{ factor.key }}">
+      {% for option in factor.options %}
+      <option value="{{ option.score }}">{{ option.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endfor %}
+  <div class="bingo-result">
+    <span class="total-value" id="bingo-value">0</span>
+    <span class="total-label">УЕ за задачу</span>
+  </div>
+  <div class="actions actions-stack">
+    <button type="button" id="bingo-apply" class="primary">Применить</button>
+    <button type="button" id="bingo-cancel" class="add">Отмена</button>
+  </div>
+</dialog>
+<script type="application/json" id="bingo-data">{{ factors|tojson }}</script>
+{% endif %}
+
 <template id="row-template">
   <div class="row">
     <div class="row-main">
@@ -120,6 +150,66 @@
     });
   } catch (error) { /* без подсказок обойдёмся */ }
 
+  var bingoDialog = document.getElementById('bingo-dialog');
+  var bingoHours = document.getElementById('bingo-hours');
+  var bingoValue = document.getElementById('bingo-value');
+  var bingoWeights = {};
+  var bingoRow = null;
+  if (bingoDialog) {
+    JSON.parse(document.getElementById('bingo-data').textContent).forEach(function (factor) {
+      bingoWeights[factor.key] = factor.weight;
+    });
+  }
+
+  function bingoTotal() {
+    var hours = parseFloat(bingoHours.value.replace(',', '.'));
+    if (isNaN(hours)) { hours = 0; }
+    var sum = 1;
+    var count = 0;
+    bingoDialog.querySelectorAll('select[data-key]').forEach(function (select) {
+      sum += 1 + bingoWeights[select.dataset.key] * parseFloat(select.value) / 100;
+      count += 1;
+    });
+    return Math.round(hours / 8 * sum / (count + 1) * 100) / 100;
+  }
+
+  function bingoRefresh() {
+    bingoValue.textContent = String(bingoTotal()).replace('.', ',');
+  }
+
+  function openBingo(row) {
+    bingoRow = row;
+    var hoursField = row.querySelector('input.hours');
+    bingoHours.value = hoursField ? hoursField.value : '';
+    // каждый расчёт начинаем с простой задачи
+    bingoDialog.querySelectorAll('select[data-key]').forEach(function (select) {
+      select.selectedIndex = 0;
+    });
+    bingoRefresh();
+    if (typeof bingoDialog.showModal === 'function') { bingoDialog.showModal(); }
+    else { bingoDialog.setAttribute('open', ''); }
+  }
+
+  if (bingoDialog) {
+    bingoDialog.addEventListener('input', bingoRefresh);
+    bingoDialog.addEventListener('change', bingoRefresh);
+    document.getElementById('bingo-cancel').addEventListener('click', function () {
+      bingoDialog.close();
+    });
+    document.getElementById('bingo-apply').addEventListener('click', function () {
+      if (!bingoRow) { bingoDialog.close(); return; }
+      var hoursField = bingoRow.querySelector('input.hours');
+      var ueField = bingoRow.querySelector('input.ue');
+      if (hoursField && bingoHours.value) { hoursField.value = bingoHours.value; }
+      if (ueField) {
+        ueField.value = String(bingoTotal()).replace('.', ',');
+        ueField.dataset.touched = '1';
+      }
+      bingoDialog.close();
+      recalc();
+    });
+  }
+
   function sumOf(selector) {
     var sum = 0;
     rows.querySelectorAll(selector).forEach(function (input) {
@@ -146,6 +236,10 @@
     addButton.addEventListener('click', function () { addRow(true); });
   }
   rows.addEventListener('click', function (event) {
+    if (event.target.classList.contains('ue') && bingoDialog) {
+      openBingo(event.target.closest('.row'));
+      return;
+    }
     if (event.target.classList.contains('task')) {
       if (typeof event.target.showPicker === 'function') {
         try { event.target.showPicker(); } catch (error) { /* браузер покажет сам */ }

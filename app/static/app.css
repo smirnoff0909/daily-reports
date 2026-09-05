@@ -364,3 +364,19 @@ tfoot td { font-weight: 500; border-bottom: 0; }
   .profile .card-fields { text-align: center; }
   .card-fields dd { margin-bottom: 8px; }
 }
+
+/* Бинго ненормированных работ: окно расчёта УЕ по четырём факторам. */
+.bingo {
+  width: min(440px, calc(100vw - 32px));
+  padding: 22px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+}
+.bingo::backdrop { background: rgba(22, 33, 31, 0.35); }
+.bingo h2 { margin: 0 0 16px; font-size: 20px; text-align: center; }
+.bingo-line {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 12px; font-size: 14px; color: var(--muted);
+}
+.bingo-line select, .bingo-line input { width: 100%; font-size: 16px; color: var(--ink); }
+.bingo-result { text-align: center; margin: 18px 0 4px; }
+.bingo .actions { margin-top: 14px; }

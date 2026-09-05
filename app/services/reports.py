@@ -20,6 +20,70 @@ UE_LIMIT = Decimal("9999.99")
 UE_HOURS_PER_UNIT = Decimal("8")   # стандарт: одна УЕ — это восемь часов
 
 
+# Бинго ненормированных работ: коэффициент задачи из четырёх факторов.
+# УЕ = (часы / 8) * (1 + сумма коэффициентов) / 5, коэффициент = 1 + вес * балл / 100.
+# Все минимальные варианты дают ровно единицу — то есть привычные часы / 8.
+BINGO_FACTORS = [
+    {
+        "key": "complexity",
+        "title": "Сложность",
+        "weight": 20,
+        "options": [
+            {"label": "правка, копипаст, мелкое изменение", "score": 0},
+            {"label": "требует понимания системы", "score": 1},
+            {"label": "новая логика / расчет / проектирование", "score": 3},
+            {"label": "R&D, неопределенность", "score": 8},
+        ],
+    },
+    {
+        "key": "uncertainty",
+        "title": "Неопределённость",
+        "weight": 10,
+        "options": [
+            {"label": "есть ТЗ", "score": 0},
+            {"label": "нужно уточнять", "score": 1},
+            {"label": "ТЗ плавающее", "score": 3},
+            {"label": "«разберись сам»", "score": 8},
+        ],
+    },
+    {
+        "key": "impact",
+        "title": "Влияние ошибки",
+        "weight": 20,
+        "options": [
+            {"label": "косметика", "score": 0},
+            {"label": "влияет на часть системы", "score": 2},
+            {"label": "может сломать систему", "score": 4},
+            {"label": "деньги / безопасность", "score": 6},
+        ],
+    },
+    {
+        "key": "breadth",
+        "title": "Мультидисциплинарность",
+        "weight": 20,
+        "options": [
+            {"label": "1 область", "score": 0},
+            {"label": "2 области", "score": 5},
+            {"label": "3+ (механика + электроника + ПО)", "score": 10},
+        ],
+    },
+]
+
+
+def bingo_coefficient(weight: int, score: int) -> Decimal:
+    return Decimal(1) + Decimal(weight) * Decimal(score) / Decimal(100)
+
+
+def bingo_ue(hours: Decimal, scores: dict[str, int]) -> Decimal:
+    """УЕ по бинго: часы, делённые на восемь, с поправкой на сложность задачи."""
+    total = Decimal(1)
+    for factor in BINGO_FACTORS:
+        score = scores.get(factor["key"], factor["options"][0]["score"])
+        total += bingo_coefficient(factor["weight"], score)
+    share = total / Decimal(len(BINGO_FACTORS) + 1)
+    return (hours / UE_HOURS_PER_UNIT * share).quantize(Decimal("0.01"))
+
+
 def today() -> date:
     return datetime.now(settings.tz).date()
 
