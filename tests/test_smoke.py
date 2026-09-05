@@ -89,3 +89,32 @@ def test_full_flow():
         export = client.get("/reports/export.xlsx")
         assert export.status_code == 200
         assert export.content[:2] == b"PK"
+
+
+def test_task_suggestions():
+    """Задачи текущего месяца подсказываются в поле названия вместе со ссылкой."""
+    seed()
+    with TestClient(app) as client:
+        login(client, "ivanov", "engineer-pass-1")
+
+        today = date.today()
+        saved = client.post(
+            "/reports",
+            data={
+                "report_date": today.isoformat(),
+                "task_title": ["Ревизия задвижки"],
+                "hours": ["6"],
+                "comment": [""],
+                "ue": [""],
+                "task_url": ["https://tracker.example/12"],
+            },
+            follow_redirects=False,
+        )
+        assert saved.status_code == 303, saved.text
+
+        # другой день того же месяца: подсказка должна доехать
+        other = today.replace(day=1) if today.day > 1 else today
+        form = client.get(f"/reports/new?date={other.isoformat()}")
+        assert form.status_code == 200
+        assert '<option value="Ревизия задвижки">' in form.text
+        assert "https://tracker.example/12" in form.text

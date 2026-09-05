@@ -353,6 +353,35 @@ def month_reports(
     return list(db.scalars(query))
 
 
+def month_task_titles(db: Session, user_id: int, report_date: date) -> list[dict]:
+    """Задачи сотрудника за месяц: название и ссылка. Свежие — первыми, повторы убраны."""
+    start, end = month_bounds(report_date.replace(day=1))
+    rows = db.execute(
+        select(ReportItem.task_title, ReportItem.task_url)
+        .join(Report, ReportItem.report_id == Report.id)
+        .where(
+            Report.user_id == user_id,
+            Report.report_date >= start,
+            Report.report_date <= end,
+        )
+        .order_by(Report.report_date.desc(), ReportItem.position, ReportItem.id)
+    ).all()
+
+    seen: dict[str, dict] = {}
+    for title, url in rows:
+        name = (title or "").strip()
+        key = name.casefold()
+        if not key:
+            continue
+        known = seen.get(key)
+        if known is None:
+            seen[key] = {"title": name, "url": url or ""}
+        elif not known["url"] and url:
+            # в свежей записи ссылки не было — берём из более старой
+            known["url"] = url
+    return list(seen.values())
+
+
 def month_weeks(days: list[dict]) -> list[dict]:
     """Дни месяца, разложенные по неделям с понедельника. Будущие дни не показываем."""
     weeks: list[dict] = []

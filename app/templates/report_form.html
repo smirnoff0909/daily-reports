@@ -53,6 +53,7 @@
       <div class="row">
         <div class="row-main">
           <input class="task" name="task_title" maxlength="200" placeholder="Название задачи"
+                 list="task-titles" autocomplete="off"
                  value="{{ row.task_title }}" {% if not editable %}disabled{% endif %} required>
           <input class="hours" name="hours" inputmode="decimal" placeholder="ч"
                  value="{{ row.hours }}" {% if not editable %}disabled{% endif %} required>
@@ -80,10 +81,18 @@
   </form>
 </section>
 
+{% set tasks = task_suggestions|default([], true) %}
+<datalist id="task-titles">
+  {% for task in tasks %}<option value="{{ task.title }}"></option>
+  {% endfor %}
+</datalist>
+<script type="application/json" id="task-links">{{ tasks|tojson }}</script>
+
 <template id="row-template">
   <div class="row">
     <div class="row-main">
-      <input class="task" name="task_title" maxlength="200" placeholder="Название задачи" required>
+      <input class="task" name="task_title" maxlength="200" placeholder="Название задачи"
+             list="task-titles" autocomplete="off" required>
       <input class="hours" name="hours" inputmode="decimal" placeholder="ч" required>
       <input class="ue" name="ue" inputmode="decimal" placeholder="УЕ"
              title="Условные единицы: по умолчанию часы ÷ 8">
@@ -104,6 +113,12 @@
   var totalValue = document.getElementById('total-value');
   var ueValue = document.getElementById('ue-value');
   var jump = document.getElementById('jump');
+  var knownLinks = {};
+  try {
+    JSON.parse(document.getElementById('task-links').textContent).forEach(function (task) {
+      if (task.url) { knownLinks[task.title.trim().toLowerCase()] = task.url; }
+    });
+  } catch (error) { /* без подсказок обойдёмся */ }
 
   function sumOf(selector) {
     var sum = 0;
@@ -131,6 +146,12 @@
     addButton.addEventListener('click', function () { addRow(true); });
   }
   rows.addEventListener('click', function (event) {
+    if (event.target.classList.contains('task')) {
+      if (typeof event.target.showPicker === 'function') {
+        try { event.target.showPicker(); } catch (error) { /* браузер покажет сам */ }
+      }
+      return;
+    }
     if (!event.target.classList.contains('drop')) { return; }
     var row = event.target.closest('.row');
     if (rows.children.length > 1) { row.remove(); } else {
@@ -148,15 +169,35 @@
       : String(Math.round(hours / 8 * 100) / 100).replace('.', ',');
   }
 
+  function fillLink(row) {
+    var taskField = row.querySelector('input.task');
+    var linkField = row.querySelector('input.link');
+    if (!taskField || !linkField || linkField.dataset.touched) { return; }
+    var url = knownLinks[taskField.value.trim().toLowerCase()];
+    if (url) {
+      linkField.value = url;
+      linkField.dataset.auto = '1';
+    } else if (linkField.dataset.auto) {
+      // задачу переименовали — старая ссылка больше не к месту
+      linkField.value = '';
+      delete linkField.dataset.auto;
+    }
+  }
+
   rows.addEventListener('input', function (event) {
     var field = event.target;
     if (field.classList.contains('ue')) { field.dataset.touched = '1'; }
     if (field.classList.contains('hours')) { fillUe(field.closest('.row')); }
+    if (field.classList.contains('task')) { fillLink(field.closest('.row')); }
+    if (field.classList.contains('link')) {
+      field.dataset.touched = '1';
+      delete field.dataset.auto;
+    }
     recalc();
   });
 
-  // уже сохранённые УЕ считаем ручными: правка часов их не затрёт
-  rows.querySelectorAll('input.ue').forEach(function (field) {
+  // уже сохранённые УЕ и ссылки считаем ручными: правки их не затрут
+  rows.querySelectorAll('input.ue, input.link').forEach(function (field) {
     if (field.value) { field.dataset.touched = '1'; }
   });
   if (jump) {
