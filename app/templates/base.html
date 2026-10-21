@@ -10,9 +10,10 @@
 {% if user %}
 <header class="topbar">
   <a class="brand" href="/">{{ app_name }}</a>
-  <nav class="nav">
+  <nav class="nav{% if user.is_manager %} nav-manager{% endif %}">
     {% if user.is_manager %}
     <a class="{% if request.url.path == '/reports' %}here{% endif %}" href="/reports">Сводный по отделу</a>
+    <a class="{% if request.url.path.startswith('/vacations') %}here{% endif %}" href="/vacations">Отпуска</a>
     <a class="{% if request.url.path.startswith('/staff') %}here{% endif %}" href="/staff">Сотрудники</a>
     {% else %}
     <a class="{% if request.url.path == '/reports/new' %}here{% endif %}" href="/reports/new">Сегодня</a>

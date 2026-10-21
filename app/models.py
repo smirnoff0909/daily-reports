@@ -115,6 +115,27 @@ class ReportItem(Base):
     report: Mapped[Report] = relationship(back_populates="items")
 
 
+class Vacation(Base):
+    __tablename__ = "vacations"
+    __table_args__ = (
+        CheckConstraint("end_date >= start_date", name="ck_vacations_dates"),
+    )
+
+    id: Mapped[int] = mapped_column(PK, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    user: Mapped[User] = relationship()
+
+    @property
+    def days(self) -> int:
+        return (self.end_date - self.start_date).days + 1
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

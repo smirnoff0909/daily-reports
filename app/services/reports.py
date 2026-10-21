@@ -209,12 +209,13 @@ def parse_bingo(raw: str | None) -> dict[str, int] | None:
 
 
 def can_edit(user: User, report_date: date) -> bool:
-    """Свой отчёт правится внутри окна, руководитель правит без ограничений."""
-    if report_date > today():
+    """Сотрудник правит отчёты текущего месяца, руководитель — любого прошлого дня."""
+    current_date = today()
+    if report_date > current_date:
         return False
     if user.is_manager:
         return True
-    return (today() - report_date).days <= settings.edit_window_days
+    return report_date >= current_date.replace(day=1)
 
 
 def parse_items(

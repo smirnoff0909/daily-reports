@@ -2,6 +2,8 @@
 import os
 import tempfile
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///" + tempfile.mkstemp(suffix=".db")[1])
 os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("COOKIE_SECURE", "false")
@@ -180,3 +182,91 @@ def test_bingo_follows_task():
         )
         found = [t for t in suggestions if t["title"] == "Расчёт балки перекрытия"]
         assert found and found[0]["bingo"] == scores, suggestions
+
+
+@pytest.mark.parametrize(
+    "current_date, report_date, role, expected",
+    [
+        (date(2026, 10, 31), date(2026, 10, 1), "engineer", True),
+        (date(2026, 10, 16), date(2026, 10, 16), "engineer", True),
+        (date(2026, 10, 16), date(2026, 10, 17), "engineer", False),
+        (date(2026, 10, 1), date(2026, 9, 30), "engineer", False),
+        (date(2027, 1, 1), date(2026, 12, 31), "engineer", False),
+        (date(2026, 10, 16), date(2025, 10, 16), "engineer", False),
+        (date(2028, 2, 29), date(2028, 2, 1), "engineer", True),
+        (date(2028, 3, 1), date(2028, 2, 29), "engineer", False),
+        (date(2026, 10, 1), date(2026, 9, 1), "manager", True),
+        (date(2026, 10, 16), date(2026, 10, 17), "manager", False),
+    ],
+)
+def test_report_edit_month_boundaries(monkeypatch, current_date, report_date, role, expected):
+    from app.services import reports as svc
+
+    monkeypatch.setattr(svc, "today", lambda: current_date)
+    assert svc.can_edit(User(role=role), report_date) is expected
+
+
+def test_report_edits_until_month_end(monkeypatch):
+    """Старый отчёт правится до конца месяца, затем форма и сохранение закрываются."""
+    from decimal import Decimal
+
+    from app.services import reports as svc
+
+    monkeypatch.setattr(svc, "today", lambda: date(2026, 10, 16))
+    seed()
+    with TestClient(app) as client:
+        login(client, "ivanov", "engineer-pass-1")
+        data = {
+            "report_date": "2026-10-01",
+            "task_title": ["Проверка оборудования"],
+            "hours": ["4"],
+            "comment": [""],
+        }
+        created = client.post("/reports", data=data, follow_redirects=False)
+        assert created.status_code == 303, created.text
+
+        with SessionLocal() as db:
+            owner = db.query(User).filter_by(login="ivanov").one()
+            report = svc.get_report(db, owner.id, date(2026, 10, 1))
+            report_id = report.id
+            owner_id = owner.id
+
+        form = client.get("/reports/new?date=2026-10-01")
+        assert form.status_code == 200
+        assert 'class="locked"' not in form.text
+        assert "Сохранить отчёт" in form.text
+        assert "Изменить отчёт" in client.get(f"/reports/{report_id}").text
+
+        invalid = client.post("/reports", data={**data, "hours": ["30"]})
+        assert invalid.status_code == 400
+        assert "Сохранить отчёт" in invalid.text
+
+        updated_data = {**data, "task_title": ["Повторная проверка оборудования"], "hours": ["8"]}
+        updated = client.post("/reports", data=updated_data, follow_redirects=False)
+        assert updated.status_code == 303, updated.text
+        with SessionLocal() as db:
+            report = svc.get_report(db, owner_id, date(2026, 10, 1))
+            assert report.items[0].task_title == "Повторная проверка оборудования"
+            assert report.total_hours == Decimal("8")
+            assert len(svc.report_history(db, report_id)) == 2
+
+        future = client.post("/reports", data={**data, "report_date": "2026-10-17"})
+        assert future.status_code == 403
+        future_form = client.get("/reports/new?date=2026-10-17")
+        assert "Будущие даты закрыты для ввода." in future_form.text
+        assert "Сохранить отчёт" not in future_form.text
+
+        monkeypatch.setattr(svc, "today", lambda: date(2026, 11, 1))
+        locked_form = client.get("/reports/new?date=2026-10-01")
+        assert 'class="locked"' in locked_form.text
+        assert "свои отчёты можно менять только в текущем месяце" in locked_form.text
+        assert "Сохранить отчёт" not in locked_form.text
+        assert "Изменить отчёт" not in client.get(f"/reports/{report_id}").text
+
+        blocked = client.post("/reports", data=data, follow_redirects=False)
+        assert blocked.status_code == 403
+        with SessionLocal() as db:
+            report = svc.get_report(db, owner_id, date(2026, 10, 1))
+            assert report.items[0].task_title == "Повторная проверка оборудования"
+            assert report.total_hours == Decimal("8")
+            assert len(svc.report_history(db, report_id)) == 2

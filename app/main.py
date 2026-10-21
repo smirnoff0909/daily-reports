@@ -8,7 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .deps import AuthRequired, Forbidden
-from .routers import auth, reports, staff
+from .routers import auth, reports, staff, vacations
 from .templating import templates
 
 app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None)
@@ -31,6 +31,7 @@ app.mount(
 app.include_router(auth.router)
 app.include_router(reports.router)
 app.include_router(staff.router)
+app.include_router(vacations.router)
 
 
 @app.exception_handler(AuthRequired)
