@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -18,6 +19,70 @@ WEEKDAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 
 UE_LIMIT = Decimal("9999.99")
 UE_HOURS_PER_UNIT = Decimal("8")   # стандарт: одна УЕ — это восемь часов
+
+
+# Бинго ненормированных работ: коэффициент задачи из четырёх факторов.
+# УЕ = (часы / 8) * (1 + сумма коэффициентов) / 5, коэффициент = 1 + вес * балл / 100.
+# Все минимальные варианты дают ровно единицу — то есть привычные часы / 8.
+BINGO_FACTORS = [
+    {
+        "key": "complexity",
+        "title": "Сложность",
+        "weight": 20,
+        "options": [
+            {"label": "правка, копипаст, мелкое изменение", "score": 0},
+            {"label": "требует понимания системы", "score": 1},
+            {"label": "новая логика / расчет / проектирование", "score": 3},
+            {"label": "R&D, неопределенность", "score": 8},
+        ],
+    },
+    {
+        "key": "uncertainty",
+        "title": "Неопределённость",
+        "weight": 10,
+        "options": [
+            {"label": "есть ТЗ", "score": 0},
+            {"label": "нужно уточнять", "score": 1},
+            {"label": "ТЗ плавающее", "score": 3},
+            {"label": "«разберись сам»", "score": 8},
+        ],
+    },
+    {
+        "key": "impact",
+        "title": "Влияние ошибки",
+        "weight": 20,
+        "options": [
+            {"label": "косметика", "score": 0},
+            {"label": "влияет на часть системы", "score": 2},
+            {"label": "может сломать систему", "score": 4},
+            {"label": "деньги / безопасность", "score": 6},
+        ],
+    },
+    {
+        "key": "breadth",
+        "title": "Мультидисциплинарность",
+        "weight": 20,
+        "options": [
+            {"label": "1 область", "score": 0},
+            {"label": "2 области", "score": 5},
+            {"label": "3+ (механика + электроника + ПО)", "score": 10},
+        ],
+    },
+]
+
+
+def bingo_coefficient(weight: int, score: int) -> Decimal:
+    return Decimal(1) + Decimal(weight) * Decimal(score) / Decimal(100)
+
+
+def bingo_ue(hours: Decimal, scores: dict[str, int]) -> Decimal:
+    """УЕ по бинго: часы, делённые на восемь, с поправкой на сложность задачи."""
+    total = Decimal(1)
+    for factor in BINGO_FACTORS:
+        score = scores.get(factor["key"], factor["options"][0]["score"])
+        total += bingo_coefficient(factor["weight"], score)
+    share = total / Decimal(len(BINGO_FACTORS) + 1)
+    return (hours / UE_HOURS_PER_UNIT * share).quantize(Decimal("0.01"))
 
 
 def today() -> date:
@@ -117,13 +182,40 @@ def default_ue(hours: Decimal) -> Decimal:
     return (hours / UE_HOURS_PER_UNIT).quantize(Decimal("0.01"))
 
 
+def parse_bingo(raw: str | None) -> dict[str, int] | None:
+    """Выбор бинго из скрытого поля строки.
+
+    Значения приходят из браузера, поэтому берём только известные факторы
+    и только их варианты: иначе в базу приедет что угодно. Неполный или
+    неузнанный набор считаем отсутствующим.
+    """
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    scores: dict[str, int] = {}
+    for factor in BINGO_FACTORS:
+        value = data.get(factor["key"])
+        allowed = {option["score"] for option in factor["options"]}
+        if isinstance(value, bool) or value not in allowed:
+            return None
+        scores[factor["key"]] = int(value)
+    return scores
+
+
 def can_edit(user: User, report_date: date) -> bool:
-    """Свой отчёт правится внутри окна, руководитель правит без ограничений."""
-    if report_date > today():
+    """Сотрудник правит отчёты текущего месяца, руководитель — любого прошлого дня."""
+    current_date = today()
+    if report_date > current_date:
         return False
     if user.is_manager:
         return True
-    return (today() - report_date).days <= settings.edit_window_days
+    return report_date >= current_date.replace(day=1)
 
 
 def parse_items(
@@ -132,6 +224,7 @@ def parse_items(
     comments: list[str],
     ues: list[str] | None = None,
     urls: list[str] | None = None,
+    bingos: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Разбирает строки формы. Возвращает (строки, ошибки)."""
     items: list[dict] = []
@@ -143,6 +236,7 @@ def parse_items(
         comment = comments[index].strip() if index < len(comments) else ""
         raw_ue = ues[index].strip() if ues and index < len(ues) else ""
         raw_url = urls[index].strip() if urls and index < len(urls) else ""
+        raw_bingo = bingos[index].strip() if bingos and index < len(bingos) else ""
 
         if not title and not raw_hours and not raw_ue and not raw_url:
             continue
@@ -187,6 +281,7 @@ def parse_items(
                 "hours": value,
                 "ue": ue,
                 "task_url": task_url,
+                "bingo": parse_bingo(raw_bingo),
                 "comment": comment or None,
             }
         )
@@ -351,6 +446,38 @@ def month_reports(
     if user_id:
         query = query.where(Report.user_id == user_id)
     return list(db.scalars(query))
+
+
+def month_task_titles(db: Session, user_id: int, report_date: date) -> list[dict]:
+    """Задачи сотрудника за месяц: название и ссылка. Свежие — первыми, повторы убраны."""
+    start, end = month_bounds(report_date.replace(day=1))
+    rows = db.execute(
+        select(ReportItem.task_title, ReportItem.task_url, ReportItem.bingo)
+        .join(Report, ReportItem.report_id == Report.id)
+        .where(
+            Report.user_id == user_id,
+            Report.report_date >= start,
+            Report.report_date <= end,
+        )
+        .order_by(Report.report_date.desc(), ReportItem.position, ReportItem.id)
+    ).all()
+
+    seen: dict[str, dict] = {}
+    for title, url, bingo in rows:
+        name = (title or "").strip()
+        key = name.casefold()
+        if not key:
+            continue
+        known = seen.get(key)
+        if known is None:
+            seen[key] = {"title": name, "url": url or "", "bingo": bingo or None}
+            continue
+        # в свежей записи поля могло не быть — добираем из более старых
+        if not known["url"] and url:
+            known["url"] = url
+        if not known["bingo"] and bingo:
+            known["bingo"] = bingo
+    return list(seen.values())
 
 
 def month_weeks(days: list[dict]) -> list[dict]:

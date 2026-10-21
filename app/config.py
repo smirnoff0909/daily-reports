@@ -14,7 +14,6 @@ class Settings:
     )
     secret_key: str = os.getenv("SECRET_KEY", "dev-only-change-me")
     timezone: str = os.getenv("APP_TIMEZONE", "Europe/Moscow")
-    edit_window_days: int = int(os.getenv("EDIT_WINDOW_DAYS", "3"))
     hours_soft_limit: float = float(os.getenv("HOURS_SOFT_LIMIT", "12"))
     hours_hard_limit: float = float(os.getenv("HOURS_HARD_LIMIT", "24"))
     session_max_age: int = int(os.getenv("SESSION_MAX_AGE", str(12 * 60 * 60)))

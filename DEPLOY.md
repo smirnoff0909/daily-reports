@@ -41,7 +41,6 @@ python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # в SECRET_KEY
 | `POSTGRES_PASSWORD` | придумать длинный пароль |
 | `POSTGRES_USER`, `POSTGRES_DB` | можно оставить `reports` |
 | `APP_TIMEZONE` | `Europe/Moscow` — в этом поясе считается «сегодня» |
-| `EDIT_WINDOW_DAYS` | `3` — сколько дней сотрудник правит свой отчёт |
 | `COOKIE_SECURE` | `true`, если пользователи открывают сайт по https. Именно по схеме у пользователя, а не по схеме до контейнера — до него всегда http. `false` только если сайт вообще без TLS |
 
 Запуск:

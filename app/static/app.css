@@ -364,3 +364,114 @@ tfoot td { font-weight: 500; border-bottom: 0; }
   .profile .card-fields { text-align: center; }
   .card-fields dd { margin-bottom: 8px; }
 }
+
+/* Бинго ненормированных работ: окно расчёта УЕ по четырём факторам. */
+.bingo {
+  width: min(440px, calc(100vw - 32px));
+  padding: 22px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+}
+.bingo::backdrop { background: rgba(22, 33, 31, 0.35); }
+.bingo h2 { margin: 0 0 16px; font-size: 20px; text-align: center; }
+.bingo-line {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 12px; font-size: 14px; color: var(--muted);
+}
+.bingo-line select, .bingo-line input { width: 100%; font-size: 16px; color: var(--ink); }
+.bingo-result { text-align: center; margin: 18px 0 4px; }
+.bingo .actions { margin-top: 14px; }
+
+/* Отпуска: годовой календарь и периоды в той же палитре, что и отчёты. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.monthpick h1 { margin: 0; }
+.vacation-legend {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px;
+  list-style: none; padding: 0; margin: 0 0 18px; font-size: 14px;
+}
+.vacation-legend li, .vacation-person { display: inline-flex; align-items: center; gap: 7px; }
+.vacation-dot {
+  display: inline-block; width: 7px; height: 7px; flex: none;
+  border-radius: 50%; background: var(--vacation-color, var(--accent));
+}
+.vacation-color-0 { --vacation-color: #0f6e56; }
+.vacation-color-1 { --vacation-color: #a56b26; }
+.vacation-color-2 { --vacation-color: #5c6cb0; }
+.vacation-color-3 { --vacation-color: #ad5869; }
+.vacation-color-4 { --vacation-color: #6f8641; }
+.vacation-color-5 { --vacation-color: #8a5d9c; }
+.vacation-color-6 { --vacation-color: #267d94; }
+.vacation-color-7 { --vacation-color: #bd603b; }
+.vacation-color-8 { --vacation-color: #605b45; }
+.vacation-color-9 { --vacation-color: #507ba6; }
+.vacation-color-10 { --vacation-color: #a24b8b; }
+.vacation-color-11 { --vacation-color: #558779; }
+.vacation-color-12 { --vacation-color: #b49a34; }
+.vacation-color-13 { --vacation-color: #7976a3; }
+.vacation-color-14 { --vacation-color: #98594b; }
+.vacation-color-15 { --vacation-color: #527037; }
+.vacation-popover {
+  position: fixed; inset: auto; margin: 0; padding: 16px;
+  width: min(320px, calc(100vw - 24px)); max-height: min(360px, calc(100vh - 24px));
+  overflow-y: auto; background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 4px 18px rgba(30, 24, 12, .14);
+}
+.vacation-popover-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vacation-popover-head h2 { margin: 0; font-size: 17px; }
+.vacation-popover-close { background: none; padding: 0 6px; color: var(--muted); font-size: 24px; line-height: 1; }
+.vacation-popover-label { color: var(--muted); font-size: 14px; margin: 12px 0 6px; }
+.vacation-popover ul { margin: 0; padding-left: 18px; font-size: 14px; overflow-wrap: anywhere; }
+.vacation-popover li + li { margin-top: 6px; }
+.vacation-popover .empty-state { font-size: 14px; margin: 12px 0 0; }
+.vacation-calendar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.vacation-month {
+  min-width: 0; padding: 12px 8px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--field);
+}
+.vacation-month h2 { margin: 0 0 8px; text-align: center; font-size: 16px; }
+.vacation-month-table { table-layout: fixed; margin: 0; }
+.vacation-month-table th { text-align: center; font-size: 11px; padding: 2px 0 7px; border: 0; }
+.vacation-month-table td { padding: 1px; height: 35px; border: 0; vertical-align: top; }
+.vacation-day {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; height: 34px; padding: 1px 0; font-size: 13px; line-height: 17px;
+  border-radius: 4px; background: transparent;
+}
+.vacation-day.weekend { color: var(--muted); }
+.vacation-day.has-vacation { background: var(--accent-soft); }
+.vacation-day.today { border-color: var(--accent); font-weight: 600; }
+.vacation-day:hover, .vacation-day[aria-expanded="true"] { background: var(--sand-deep); }
+.vacation-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vacation-marks { display: flex; align-items: center; justify-content: center; gap: 2px; height: 8px; }
+.vacation-marks .vacation-dot { width: 4px; height: 4px; }
+.vacation-more { font-size: 10px; line-height: 8px; }
+.vacation-periods { font-size: 14px; }
+.vacation-dates { white-space: nowrap; }
+.vacation-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.vacation-delete { background: none; color: var(--alert); padding: 0; font-size: 14px; }
+.vacation-delete:hover { background: none; text-decoration: underline; }
+.vacation-entry { margin-bottom: 20px; scroll-margin-top: 16px; }
+.vacation-entry h2 { margin-top: 0; font-size: 22px; }
+.vacation-fields { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); }
+.vacation-fields input, .vacation-fields select { width: 100%; min-width: 0; }
+.vacation-errors { margin-top: 18px; }
+
+@media (max-width: 760px) {
+  .vacation-calendar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vacation-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vacation-employee { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .nav-manager a { font-size: 14px; white-space: normal; min-width: 0; padding: 10px 6px; }
+  .vacation-legend { justify-content: flex-start; }
+  .vacation-periods td, .vacation-periods th { padding: 8px 6px; }
+}
+@media (max-width: 400px) {
+  .vacation-calendar { grid-template-columns: 1fr; }
+  .vacation-fields { grid-template-columns: 1fr; }
+  .vacation-day { height: 38px; font-size: 15px; }
+  .vacation-month-table td { height: 39px; }
+}

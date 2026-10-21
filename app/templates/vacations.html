@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Отпуска — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card vacation-entry" id="vacation-form">
+  <h2>{{ 'Изменить отпуск' if existing else 'Добавить отпуск' }}</h2>
+  <p class="lead">Выберите сотрудника и укажите первый и последний день отпуска.</p>
+  {% if errors %}<div class="alert vacation-errors"><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if staff %}
+  <form method="post" action="/vacations{% if existing %}/{{ existing.id }}{% endif %}">
+    <input type="hidden" name="year" value="{{ year }}">
+    <div class="vacation-fields stack">
+      <label class="vacation-employee">Сотрудник
+        <select name="user_id" required>
+          <option value="">Выберите сотрудника</option>
+          {% for person in staff %}
+          <option value="{{ person.id }}" {% if values.get('user_id', '')|string == person.id|string %}selected{% endif %}>{{ person.full_name }}{% if not person.is_active %} · отключён{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Начало отпуска
+        <input type="date" name="start_date" value="{{ values.get('start_date', '') }}" required>
+      </label>
+      <label>Окончание отпуска
+        <input type="date" name="end_date" value="{{ values.get('end_date', '') }}" required>
+      </label>
+    </div>
+    <div class="actions">
+      <button type="submit" class="primary">{{ 'Сохранить изменения' if existing else 'Добавить отпуск' }}</button>
+      {% if existing %}<a href="/vacations?year={{ year }}#vacation-form">Отмена</a>{% endif %}
+    </div>
+  </form>
+  {% else %}<p class="empty-state">Сначала <a href="/staff/new">добавьте сотрудника</a>.</p>{% endif %}
+</section>
+
+<section class="card">
+  <div class="monthpick">
+    {% if year > 1 %}<a class="daynav-step" href="/vacations?year={{ year - 1 }}" title="Год назад">←</a>{% endif %}
+    <h1>Отпуска · {{ year }}</h1>
+    {% if year < 9999 %}<a class="daynav-step" href="/vacations?year={{ year + 1 }}" title="Год вперёд">→</a>{% endif %}
+  </div>
+
+  {% if saved == 'create' %}<p class="notice">Отпуск добавлен в календарь.</p>
+  {% elif saved == 'update' %}<p class="notice">Даты отпуска обновлены.</p>
+  {% elif saved == 'delete' %}<p class="notice">Отпуск удалён из календаря.</p>{% endif %}
+
+  <div class="total-pair total-pair-center">
+    <div class="total">
+      <span class="total-value">{{ people|length }}</span>
+      <span class="total-label">сотрудников в графике</span>
+    </div>
+    <div class="total">
+      <span class="total-value">{{ vacations|length }}</span>
+      <span class="total-label">периодов отпуска</span>
+    </div>
+  </div>
+  {% if people %}
+  <ul class="vacation-legend" aria-label="Цвета сотрудников">
+    {% for person in people %}
+    <li class="vacation-color-{{ color_index(person.id) }}">
+      <span class="vacation-dot" aria-hidden="true"></span>{{ person.full_name }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state hint-center">На {{ year }} год отпуска пока не добавлены.</p>
+  {% endif %}
+
+  <div class="vacation-calendar">
+    {% for month in months %}
+    <section class="vacation-month" aria-label="{{ month.name|capitalize }} {{ year }}">
+      <h2>{{ month.name|capitalize }}</h2>
+      <table class="vacation-month-table">
+        <caption class="visually-hidden">{{ month.name|capitalize }} {{ year }}</caption>
+        <thead><tr>{% for weekday in weekdays %}<th scope="col">{{ weekday }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for week in month.weeks %}
+          <tr>
+            {% for day in week %}
+            <td>
+              {% if day %}
+              <button type="button"
+                      class="vacation-day{% if day.weekend %} weekend{% endif %}{% if day.today %} today{% endif %}{% if day.employees %} has-vacation{% endif %}"
+                      data-label="{{ day.date|date_ru }}" data-names="{{ day.names }}"
+                      data-employees='{{ day.employees|map(attribute="full_name")|list|tojson }}'
+                      aria-expanded="false" aria-controls="vacation-day-popover" aria-haspopup="dialog"
+                      aria-label="{{ day.date|date_ru }}: {{ day.names or 'нет отпусков' }}">
+                <span>{{ day.number }}</span>
+                <span class="vacation-marks" aria-hidden="true">
+                  {% for person in day.employees[:3] %}<span class="vacation-dot vacation-color-{{ color_index(person.id) }}"></span>{% endfor %}
+                  {% if day.employees|length > 3 %}<span class="vacation-more">+</span>{% endif %}
+                </span>
+              </button>
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endfor %}
+  </div>
+
+  {% if vacations %}
+  <h2>Периоды отпусков</h2>
+  <p class="hint">Даты начала и окончания включены в отпуск.</p>
+  <div class="table-scroll">
+    <table class="vacation-periods">
+      <thead><tr><th scope="col">Сотрудник</th><th scope="col">Даты отпуска</th><th scope="col" class="num">Дней</th><th scope="col"><span class="visually-hidden">Действия</span></th></tr></thead>
+      <tbody>
+        {% for vacation in vacations %}
+        <tr>
+          <td><span class="vacation-person vacation-color-{{ color_index(vacation.user_id) }}"><span class="vacation-dot" aria-hidden="true"></span>{{ vacation.user.full_name }}</span></td>
+          <td class="vacation-dates">{{ vacation.start_date|date_ru }} — {{ vacation.end_date|date_ru }}</td>
+          <td class="num">{{ vacation.days }}</td>
+          <td>
+            <div class="vacation-row-actions">
+              <a href="/vacations?year={{ year }}&amp;edit={{ vacation.id }}#vacation-form">Изменить</a>
+              <form method="post" action="/vacations/{{ vacation.id }}/delete">
+                <input type="hidden" name="year" value="{{ year }}">
+                <button type="submit" class="vacation-delete" aria-label="Удалить отпуск: {{ vacation.user.full_name }}, {{ vacation.start_date|date_ru }} — {{ vacation.end_date|date_ru }}">Удалить</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<div class="vacation-popover" id="vacation-day-popover" popover="auto" role="dialog" aria-labelledby="vacation-popover-date">
+  <div class="vacation-popover-head">
+    <h2 id="vacation-popover-date"></h2>
+    <button type="button" class="vacation-popover-close" aria-label="Закрыть">×</button>
+  </div>
+  <p class="vacation-popover-label">В отпуске:</p>
+  <ul id="vacation-popover-people"></ul>
+  <p id="vacation-popover-empty" class="empty-state" hidden>В этот день никто не в отпуске.</p>
+</div>
+
+<script>
+(function () {
+  var calendar = document.querySelector('.vacation-calendar');
+  var popover = document.getElementById('vacation-day-popover');
+  var selected = null;
+
+  function positionPopover() {
+    if (!selected || !popover.matches(':popover-open')) { return; }
+    var anchor = selected.getBoundingClientRect();
+    if (anchor.bottom < 0 || anchor.top > window.innerHeight) {
+      popover.hidePopover();
+      return;
+    }
+    var bounds = popover.getBoundingClientRect();
+    var left = Math.max(12, Math.min(anchor.left, window.innerWidth - bounds.width - 12));
+    var top = anchor.bottom + 6;
+    if (top + bounds.height > window.innerHeight - 12) {
+      top = anchor.top - bounds.height - 6;
+    }
+    top = Math.max(12, Math.min(top, window.innerHeight - bounds.height - 12));
+    popover.style.left = left + 'px';
+    popover.style.top = top + 'px';
+  }
+
+  calendar.addEventListener('click', function (event) {
+    var day = event.target.closest('.vacation-day');
+    if (!day) { return; }
+    if (selected === day && popover.matches(':popover-open')) {
+      popover.hidePopover();
+      return;
+    }
+    if (selected) { selected.setAttribute('aria-expanded', 'false'); }
+    selected = day;
+    day.setAttribute('aria-expanded', 'true');
+    document.getElementById('vacation-popover-date').textContent = day.dataset.label;
+    var people = JSON.parse(day.dataset.employees);
+    var list = document.getElementById('vacation-popover-people');
+    list.replaceChildren();
+    people.forEach(function (name) {
+      var item = document.createElement('li');
+      item.textContent = name;
+      list.appendChild(item);
+    });
+    list.hidden = people.length === 0;
+    popover.querySelector('.vacation-popover-label').hidden = people.length === 0;
+    document.getElementById('vacation-popover-empty').hidden = people.length !== 0;
+    if (!popover.matches(':popover-open')) { popover.showPopover(); }
+    positionPopover();
+  });
+  popover.addEventListener('toggle', function (event) {
+    if (event.newState === 'closed' && selected) {
+      selected.setAttribute('aria-expanded', 'false');
+      selected = null;
+    }
+  });
+  popover.querySelector('.vacation-popover-close').addEventListener('click', function () {
+    popover.hidePopover();
+    if (selected) { selected.focus({ preventScroll: true }); }
+  });
+  window.addEventListener('resize', positionPopover);
+  window.addEventListener('scroll', positionPopover, true);
+  {% if errors or existing %}document.getElementById('vacation-form').scrollIntoView();{% endif %}
+})();
+</script>
+{% endblock %}

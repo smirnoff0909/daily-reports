@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -51,6 +52,7 @@ def new_report(
                 "hours": item.hours,
                 "ue": item.ue,
                 "task_url": item.task_url,
+                "bingo": json.dumps(item.bingo) if item.bingo else "",
                 "comment": item.comment,
             }
             for item in report.items
@@ -70,8 +72,9 @@ def new_report(
             "today": svc.today(),
             "rows": rows,
             "editable": svc.can_edit(user, report_date),
-            "edit_window_days": svc.settings.edit_window_days,
             "existing": report is not None,
+            "task_suggestions": svc.month_task_titles(db, user.id, report_date),
+            "bingo": svc.BINGO_FACTORS,
             "errors": [],
             "warning": None,
         },
@@ -99,6 +102,7 @@ async def save_report(
         [str(value) for value in form.getlist("comment")],
         [str(value) for value in form.getlist("ue")],
         [str(value) for value in form.getlist("task_url")],
+        [str(value) for value in form.getlist("bingo")],
     )
 
     if errors:
@@ -111,6 +115,9 @@ async def save_report(
                 else "",
                 "task_url": form.getlist("task_url")[index]
                 if index < len(form.getlist("task_url"))
+                else "",
+                "bingo": form.getlist("bingo")[index]
+                if index < len(form.getlist("bingo"))
                 else "",
                 "comment": form.getlist("comment")[index]
                 if index < len(form.getlist("comment"))
@@ -133,8 +140,9 @@ async def save_report(
                 "today": svc.today(),
                 "rows": rows,
                 "editable": True,
-                "edit_window_days": svc.settings.edit_window_days,
                 "existing": svc.get_report(db, user.id, report_date) is not None,
+                "task_suggestions": svc.month_task_titles(db, user.id, report_date),
+                "bingo": svc.BINGO_FACTORS,
                 "errors": errors,
                 "warning": None,
             },
